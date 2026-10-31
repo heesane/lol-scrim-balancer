@@ -1531,7 +1531,7 @@ function syncStatsFromHistory() {
 
       const sortedChamps = Object.values(champGroups).sort((a, b) => b.count - a.count);
 
-      sortedChamps.forEach((g, idx) => {
+sortedChamps.forEach((g, idx) => {
         const winRate = Math.round((g.wins / g.count) * 100);
         const kdaRatio = g.deaths === 0 ? 'Perfect' : ((g.kills + g.assists) / g.deaths).toFixed(2);
         const k = (g.kills / g.count).toFixed(1);
@@ -1542,15 +1542,22 @@ function syncStatsFromHistory() {
         const cspm = (g.csSum / Math.max(1, g.durSum)).toFixed(1);
         const kp = Math.round(g.kpSum / g.count);
 
+        const champKo = getChampionKoName(g.name);
+        const champIcon = getChampionIconUrl(champKo);
+        const cleanEn = CHAMPION_NAME_KO_TO_EN[champKo] || champKo;
+
         rowsHtml += `
           <tr class="hover:bg-slate-50/50 dark:hover:bg-[#161d2a]/50 transition border-b border-slate-800/40">
             <td class="py-3 px-3 text-center text-slate-400 font-bold">${idx + 1}</td>
             <td class="py-3 px-4">
               <div class="flex items-center gap-2.5">
-                <div class="w-7 h-7 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center font-black text-amber-400 text-xs shrink-0">
-                  ${g.name.slice(0, 2)}
+                <div class="w-7 h-7 rounded-lg overflow-hidden bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0">
+                  ${champIcon 
+                    ? `<img src="${champIcon}" alt="${champKo}" class="w-full h-full object-cover" onerror="this.onerror=null; this.src='https://opgg-static.akamaized.net/meta/images/lol/latest/champion/${cleanEn}.png';">`
+                    : `<span class="font-black text-amber-400 text-xs">${champKo.slice(0, 2)}</span>`
+                  }
                 </div>
-                <span class="font-extrabold text-slate-200">${g.name}</span>
+                <span class="font-extrabold text-slate-200">${champKo}</span>
               </div>
             </td>
             <td class="py-3 px-4 text-center font-bold text-slate-300">${g.count}</td>
@@ -2302,21 +2309,13 @@ function syncStatsFromHistory() {
               </div>
             </div>
 
-            <!-- 🌟 모스트 챔피언 강조 영역 (선명하고 큼직한 칩) -->
+            <!-- 🌟 모스트 챔피언 강조 영역 (국문 명칭 + 원형 썸네일 사진) -->
             <div class="mb-3">
               <span class="text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1.5 flex items-center gap-1">
                 <i class="fa-solid fa-fire text-amber-500"></i> 주력 모스트 챔피언
               </span>
               <div class="flex items-center gap-1.5 flex-wrap">
-                ${mostList.map((c, i) => `
-                  <span class="px-2.5 py-1 rounded-lg text-xs font-extrabold border shadow-sm flex items-center gap-1 ${
-                    i === 0 
-                      ? 'bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-300' 
-                      : 'bg-slate-100 dark:bg-[#161d2a] border-slate-200 dark:border-slate-700 text-slate-700 dark:text-gray-200'
-                  }">
-                    <span class="text-[10px] text-slate-400">#${i+1}</span> ${c}
-                  </span>
-                `).join('')}
+                ${mostList.map((c, i) => renderChampionBadgeHtml(c, i + 1)).join('')}
               </div>
             </div>
 
