@@ -3465,6 +3465,50 @@ function resetMatchHistory() {
       showToast(`시작 시간이 [${newTime}]으로 변경되었습니다.`, 'info');
     }
 
+function submitRsvpVote(voteType) {
+      const select = document.getElementById('sched-player-select');
+      const selectedId = select?.value;
+      if (!selectedId) {
+        showToast('먼저 본인 소환사를 목록에서 선택해 주세요.', 'error');
+        return;
+      }
+
+      const p = summoners.find(s => s.id === selectedId);
+      if (!p) return;
+
+      if (!scrimSchedules[selectedSchedDateKey]) {
+        scrimSchedules[selectedSchedDateKey] = { time: '22:00', participants: [] };
+      }
+      const sched = scrimSchedules[selectedSchedDateKey];
+      const availTime = document.getElementById('sched-avail-time')?.value || '정시 가능';
+      const reasonInput = document.getElementById('sched-reason-input');
+      const reasonText = reasonInput ? reasonInput.value.trim() : '';
+
+      const existingIdx = sched.participants.findIndex(item => item.id === p.id || item.name === p.name);
+
+      if (voteType === 'JOIN') {
+        const itemData = { id: p.id, name: p.name, status: 'JOIN', availTime: availTime, reason: reasonText };
+        if (existingIdx >= 0) sched.participants[existingIdx] = itemData;
+        else sched.participants.push(itemData);
+        showToast(`[${p.name}] 참가 확정! (${availTime})`, 'success');
+      } else if (voteType === 'HOLD') {
+        const itemData = { id: p.id, name: p.name, status: 'HOLD', availTime: availTime, reason: reasonText };
+        if (existingIdx >= 0) sched.participants[existingIdx] = itemData;
+        else sched.participants.push(itemData);
+        showToast(`[${p.name}] 보류 등록! (${availTime})`, 'info');
+      } else if (voteType === 'ABSENT') {
+        const itemData = { id: p.id, name: p.name, status: 'ABSENT', availTime: '불참', reason: reasonText || '개인 사유 불참' };
+        if (existingIdx >= 0) sched.participants[existingIdx] = itemData;
+        else sched.participants.push(itemData);
+        showToast(`[${p.name}] 불참 사유가 등록되었습니다.`, 'info');
+      }
+
+      if (reasonInput) reasonInput.value = '';
+      saveLocalData();
+      renderCalendar();
+      renderScheduleBoard();
+    }
+
     function renderScheduleBoard() {
       const parts = selectedSchedDateKey.split('-');
       const dObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
@@ -3482,13 +3526,12 @@ function resetMatchHistory() {
       if (timeSelect) timeSelect.value = schedData.time || '22:00';
 
       const roster = schedData.participants || [];
-      const confirmed = roster.filter(p => p.status !== 'HOLD');
-      const onHold = roster.filter(p => p.status === 'HOLD');
+      const confirmed = roster.filter(p => p.status === 'JOIN');
+      const onHoldOrAbsent = roster.filter(p => p.status === 'HOLD' || p.status === 'ABSENT');
       const count = confirmed.length;
 
       document.getElementById('sched-roster-count').textContent = count;
 
-      // 🌟 투표자 가능 시간대 실시간 집계 요약
       const timeCounts = {};
       confirmed.forEach(p => {
         const t = p.availTime || '정시 가능';
@@ -3518,17 +3561,14 @@ function resetMatchHistory() {
         if (banner) banner.classList.add('hidden');
       }
 
-      // 소환사 셀렉트 박스 갱신 (이미 참가/보류 등록한 멤버는 선택지에서 제외)
       const select = document.getElementById('sched-player-select');
       if (select) {
         const joinedPlayerIds = new Set(roster.map(p => p.id || summoners.find(s => isSameSummonerName(s.name, p.name))?.id).filter(Boolean));
         const availableSummoners = summoners.filter(s => !joinedPlayerIds.has(s.id));
-
         select.innerHTML = '<option value="">소환사 선택 (본인 이름)...</option>' + 
           availableSummoners.map(s => `<option value="${s.id}">${s.name} ${s.description ? `(${s.description})` : ''} - ${s.tier}</option>`).join('');
       }
 
-      // 참가자 목록 칩 렌더링 (참가 확정 10인 우선 + 보류 대기자 후순위)
       const rosterListEl = document.getElementById('sched-roster-list');
       if (!rosterListEl) return;
       rosterListEl.innerHTML = '';
@@ -3538,7 +3578,7 @@ function resetMatchHistory() {
         return;
       }
 
-      // 1. 확정 참가자 목록 (1~10번 슬롯)
+      // 1. 참가 확정 인원 명단
       confirmed.forEach((p, idx) => {
         const fullSummoner = summoners.find(s => s.id === p.id || s.name === p.name);
         const chip = document.createElement('div');
@@ -3555,6 +3595,7 @@ function resetMatchHistory() {
                 ${fullSummoner?.description ? `<span class="text-[10px] text-amber-500 font-bold shrink-0">(${fullSummoner.description})</span>` : ''}
               </div>
               <span class="text-[10px] text-slate-400 block">${fullSummoner?.tier || 'UNRANKED'}</span>
+              ${p.reason ? `<span class="text-[10px] text-emerald-400 block mt-0.5 font-medium">💬 "${p.reason}"</span>` : ''}
             </div>
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
@@ -3569,22 +3610,25 @@ function resetMatchHistory() {
         rosterListEl.appendChild(chip);
       });
 
-      // 2. 보류 / 지각 가능 인원 (우선순위 후순위)
-      if (onHold.length > 0) {
+      // 2. 🌟 불참 및 보류 사유 명단 (누구나 들어와서 사유를 볼 수 있는 실시간 공유 대기열)
+      if (onHoldOrAbsent.length > 0) {
         const holdHeader = document.createElement('div');
-        holdHeader.className = "col-span-full pt-3 pb-1 text-[11px] font-bold text-amber-500 flex items-center gap-1.5 border-t border-slate-200 dark:border-slate-800 mt-2";
-        holdHeader.innerHTML = `<i class="fa-solid fa-clock"></i> <span>보류 / 조건부 가능 대기열 (${onHold.length}명) - 우선순위 후순위</span>`;
+        holdHeader.className = "col-span-full pt-3 pb-1 text-[11px] font-bold text-rose-500 dark:text-rose-400 flex items-center gap-1.5 border-t border-slate-200 dark:border-slate-800 mt-2";
+        holdHeader.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> <span>불참 및 보류 사유 명단 (${onHoldOrAbsent.length}명) - 누구나 사유 확인 가능</span>`;
         rosterListEl.appendChild(holdHeader);
 
-        onHold.forEach(p => {
+        onHoldOrAbsent.forEach(p => {
           const fullSummoner = summoners.find(s => s.id === p.id || s.name === p.name);
+          const isAbsent = (p.status === 'ABSENT');
           const chip = document.createElement('div');
-          chip.className = `p-2.5 rounded-xl border flex items-center justify-between text-xs gap-2 min-w-0 transition bg-slate-100/80 dark:bg-[#161d2a]/80 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-gray-300 opacity-80`;
+          chip.className = `p-2.5 rounded-xl border flex items-center justify-between text-xs gap-2 min-w-0 transition ${
+            isAbsent ? 'bg-rose-500/10 border-rose-500/30 text-rose-300' : 'bg-slate-100 dark:bg-[#161d2a] border-slate-300 dark:border-slate-700 text-slate-600 dark:text-gray-300'
+          }`;
 
           chip.innerHTML = `
             <div class="flex items-center gap-2 min-w-0 flex-1">
-              <span class="w-5 h-5 rounded-md bg-slate-300 dark:bg-slate-700 text-slate-600 dark:text-gray-300 font-bold text-[10px] flex items-center justify-center shrink-0">
-                대기
+              <span class="w-5 h-5 rounded-md ${isAbsent ? 'bg-rose-600 text-white' : 'bg-amber-500/30 text-amber-500'} font-bold text-[10px] flex items-center justify-center shrink-0">
+                ${isAbsent ? '불참' : '보류'}
               </span>
               <div class="min-w-0 flex-1">
                 <div class="flex items-center gap-1.5">
@@ -3592,12 +3636,10 @@ function resetMatchHistory() {
                   ${fullSummoner?.description ? `<span class="text-[10px] text-slate-400 font-bold shrink-0">(${fullSummoner.description})</span>` : ''}
                 </div>
                 <span class="text-[10px] text-slate-400 block">${fullSummoner?.tier || 'UNRANKED'}</span>
+                <span class="text-[11px] ${isAbsent ? 'text-rose-400' : 'text-amber-400'} block mt-0.5 font-bold">사유: "${p.reason || '사유 미작성'}"</span>
               </div>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
-              <span class="px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-[10px] font-bold text-amber-500 whitespace-nowrap">
-                <i class="fa-solid fa-clock mr-1"></i>${p.availTime || '보류'}
-              </span>
               <button onclick="removeRsvp('${p.id || p.name}')" class="text-slate-400 hover:text-rose-500 p-1 shrink-0" title="취소">
                 <i class="fa-solid fa-xmark"></i>
               </button>
@@ -3608,7 +3650,7 @@ function resetMatchHistory() {
       }
     }
 
-    function submitRsvpVote(voteType) {
+function submitRsvpVote(voteType) {
       const select = document.getElementById('sched-player-select');
       const selectedId = select?.value;
       if (!selectedId) {
@@ -3624,28 +3666,29 @@ function resetMatchHistory() {
       }
       const sched = scrimSchedules[selectedSchedDateKey];
       const availTime = document.getElementById('sched-avail-time')?.value || '정시 가능';
+      const reasonInput = document.getElementById('sched-reason-input');
+      const reasonText = reasonInput ? reasonInput.value.trim() : '';
 
       const existingIdx = sched.participants.findIndex(item => item.id === p.id || item.name === p.name);
 
       if (voteType === 'JOIN') {
-        const itemData = { id: p.id, name: p.name, status: 'JOIN', availTime: availTime };
+        const itemData = { id: p.id, name: p.name, status: 'JOIN', availTime: availTime, reason: reasonText };
         if (existingIdx >= 0) sched.participants[existingIdx] = itemData;
         else sched.participants.push(itemData);
         showToast(`[${p.name}] 참가 확정! (${availTime})`, 'success');
       } else if (voteType === 'HOLD') {
-        const itemData = { id: p.id, name: p.name, status: 'HOLD', availTime: availTime };
+        const itemData = { id: p.id, name: p.name, status: 'HOLD', availTime: availTime, reason: reasonText };
         if (existingIdx >= 0) sched.participants[existingIdx] = itemData;
         else sched.participants.push(itemData);
-        showToast(`[${p.name}] 보류 등록! (${availTime}) - 우선순위 후순위`, 'info');
+        showToast(`[${p.name}] 보류 등록! (${availTime})`, 'info');
       } else if (voteType === 'ABSENT') {
-        if (existingIdx >= 0) {
-          sched.participants.splice(existingIdx, 1);
-          showToast(`[${p.name}] 오늘 불참 처리되었습니다.`, 'info');
-        } else {
-          showToast(`[${p.name}] 참가 명단에 없습니다.`, 'info');
-        }
+        const itemData = { id: p.id, name: p.name, status: 'ABSENT', availTime: '불참', reason: reasonText || '개인 사유 불참' };
+        if (existingIdx >= 0) sched.participants[existingIdx] = itemData;
+        else sched.participants.push(itemData);
+        showToast(`[${p.name}] 불참 사유가 등록되었습니다.`, 'info');
       }
 
+      if (reasonInput) reasonInput.value = '';
       saveLocalData();
       renderCalendar();
       renderScheduleBoard();
