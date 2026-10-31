@@ -556,6 +556,10 @@
                   <i class="fa-solid fa-trash-can"></i>
                   <span>대진 초기화</span>
                 </button>
+                <button onclick="copyLineupToClipboard()" class="px-3.5 py-1.5 rounded-xl bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-500 border border-emerald-500/40 text-xs font-black transition flex items-center gap-1.5 cursor-pointer shadow-sm" title="롤 인게임 채팅에 붙여넣을 수 있는 실명 대진표 복사">
+                  <i class="fa-regular fa-copy"></i>
+                  <span>롤 챗 대진표 복사</span>
+                </button>
                 <button onclick="rerollBalancing()" class="px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-[#161d2a] hover:bg-slate-200 text-slate-700 dark:text-gray-300 text-xs font-semibold border border-slate-200 dark:border-slate-700 transition flex items-center gap-1.5 cursor-pointer">
                   <i class="fa-solid fa-arrows-rotate text-sky-500"></i>
                   <span>재셔플</span>
@@ -2003,7 +2007,40 @@ function syncStatsFromHistory() {
 
     function rerollBalancing() { runSmartBalancing(); }
 
-        function swapEntireTeams() {
+        
+    // 🌟 롤 인게임 채팅 공유용 대진표 복사 (실명 우선)
+    function copyLineupToClipboard() {
+      if (!currentMatch || !currentMatch.blue || !currentMatch.red) {
+        showToast('대진표가 먼저 생성되어야 복사할 수 있습니다.', 'error');
+        return;
+      }
+      const getName = p => {
+        if (!p) return '미정';
+        const s = summoners.find(sm => isSameSummonerName(sm.name, p.name));
+        return (s?.description?.trim()) || p.description || p.name.split('#')[0];
+      };
+
+      const text = `[1팀(블루) / 2팀(레드)]
+탑: ${getName(currentMatch.blue[0])} / ${getName(currentMatch.red[0])}
+정글: ${getName(currentMatch.blue[1])} / ${getName(currentMatch.red[1])}
+미드: ${getName(currentMatch.blue[2])} / ${getName(currentMatch.red[2])}
+원딜: ${getName(currentMatch.blue[3])} / ${getName(currentMatch.red[3])}
+서폿: ${getName(currentMatch.blue[4])} / ${getName(currentMatch.red[4])}`;
+
+      navigator.clipboard.writeText(text).then(() => {
+        showToast('대진표가 복사되었습니다! 롤 채팅창에 Ctrl+V 하세요.', 'success');
+      }).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast('대진표가 복사되었습니다! 롤 채팅창에 Ctrl+V 하세요.', 'success');
+      });
+    }
+
+    function swapEntireTeams() {
       if (!currentMatch) return;
       const temp = currentMatch.blue;
       currentMatch.blue = currentMatch.red;
