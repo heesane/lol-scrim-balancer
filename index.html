@@ -3429,52 +3429,25 @@ function resetMatchHistory() {
           showToast('관리자 계정에서 로그아웃되었습니다.', 'info');
         }
       } else {
-        const modal = document.getElementById('modal-admin-auth');
-        const input = document.getElementById('admin-pin-input');
-        if (input) input.value = '';
-        if (modal) {
-          modal.classList.remove('hidden');
-          modal.style.display = 'flex';
-          modal.style.zIndex = '99999';
-          if (input) setTimeout(() => input.focus(), 50);
+        // 🌟 수정/삭제 버튼처럼 브라우저 즉시 입력창(prompt)으로 다이렉트 팝업!
+        const pin = prompt('관리자(이준희) 비밀번호를 입력하세요:');
+        if (pin === null) return;
+        const cleanPin = pin.trim();
+        if (cleanPin === 'wnsgml42' || cleanPin === '660330' || cleanPin === 'admin' || cleanPin === '1111') {
+          isAdminLoggedIn = true;
+          localStorage.setItem('scrim_admin_auth', 'true');
+          updateAdminButtonUI();
+          renderAllViews();
+          showToast('환영합니다 이준희 관리자님! 모든 관리 권한이 활성화되었습니다. 👑', 'success');
         } else {
-          const directPw = prompt('관리자 비밀번호를 입력하세요:');
-          if (directPw) checkAndSetAdminLogin(directPw);
+          showToast('관리자 비밀번호가 일치하지 않습니다.', 'error');
         }
       }
     }
 
-    function closeAdminAuthModal() {
-      const modal = document.getElementById('modal-admin-auth');
-      if (modal) {
-        modal.classList.add('hidden');
-        modal.style.display = 'none';
-      }
-    }
-
-    function checkAndSetAdminLogin(pin) {
-      const cleanPin = (pin || '').trim();
-      if (cleanPin === 'wnsgml42' || cleanPin === '660330' || cleanPin === 'admin' || cleanPin === '1111') {
-        isAdminLoggedIn = true;
-        localStorage.setItem('scrim_admin_auth', 'true');
-        closeAdminAuthModal();
-        updateAdminButtonUI();
-        renderAllViews();
-        showToast('환영합니다 이준희 관리자님! 관리자 권한이 활성화되었습니다. 👑', 'success');
-      } else {
-        showToast('관리자 비밀번호가 일치하지 않습니다.', 'error');
-      }
-    }
-
-    function submitAdminLogin(e) {
-      if (e) { e.preventDefault(); e.stopPropagation(); }
-      const input = document.getElementById('admin-pin-input');
-      checkAndSetAdminLogin(input ? input.value : '');
-    }
-
-    function handleAdminLoginSubmit(e) {
-      submitAdminLogin(e);
-    }
+    function closeAdminAuthModal() {}
+    function handleAdminLoginSubmit(e) { if(e) e.preventDefault(); }
+    function submitAdminLogin(e) { if(e) e.preventDefault(); }
 
     function updateAdminButtonUI() {
       const btn = document.getElementById('btn-admin-auth');
@@ -4028,21 +4001,21 @@ function resetMatchHistory() {
   </script>
 
   <!-- 👑 관리자(이준희) 전용 인증 모달 -->
-  <div id="modal-admin-auth" style="display: none; z-index: 99999;" class="fixed inset-0 bg-black/80 backdrop-blur-sm items-center justify-center p-4">
+  <div id="modal-admin-auth" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden items-center justify-center p-4">
     <div class="bg-white dark:bg-[#121721] border border-slate-200 dark:border-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 relative">
-      <button type="button" onclick="closeAdminAuthModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-sm"><i class="fa-solid fa-xmark"></i></button>
+      <button onclick="closeAdminAuthModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-sm"><i class="fa-solid fa-xmark"></i></button>
       <div class="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-500 text-xl mb-3 mx-auto">
         <i class="fa-solid fa-crown"></i>
       </div>
       <h3 class="text-base font-black text-center text-slate-900 dark:text-gray-100 mb-1">관리자(이준희) 전용 인증</h3>
       <p class="text-xs text-center text-slate-500 dark:text-gray-400 mb-4">초기화, 히스토리 삭제 및 게시글 관리는 관리자 권한이 필요합니다.</p>
 
-      <form onsubmit="event.preventDefault(); submitAdminLogin(event);" class="space-y-3">
+      <form onsubmit="handleAdminLoginSubmit(event)" class="space-y-3">
         <div>
           <label for="admin-pin-input" class="block text-xs font-bold text-slate-700 dark:text-gray-300 mb-1">관리자 비밀번호</label>
-          <input id="admin-pin-input" type="password" placeholder="비밀번호 입력" onkeyup="if(event.key === 'Enter') submitAdminLogin(event)" class="w-full bg-slate-50 dark:bg-[#161d2a] border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:border-amber-500">
+          <input id="admin-pin-input" required type="password" placeholder="비밀번호 입력" class="w-full bg-slate-50 dark:bg-[#161d2a] border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:border-amber-500">
         </div>
-        <button type="button" onclick="submitAdminLogin(event)" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-600 via-amber-500 to-yellow-500 text-gray-950 font-black text-xs shadow-md hover:brightness-110 transition cursor-pointer">
+        <button type="submit" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-600 via-amber-500 to-yellow-500 text-gray-950 font-black text-xs shadow-md hover:brightness-110 transition">
           관리자 권한 로그인
         </button>
       </form>
