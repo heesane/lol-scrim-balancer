@@ -392,13 +392,13 @@
               </button>
             </div>
 
-            <!-- 빠른 참가 / 보류 / 불참 투표 폼 -->
+<!-- 빠른 참가 / 보류 / 불참 투표 폼 (사유 입력란 완비) -->
             <div class="p-4 rounded-xl bg-slate-50 dark:bg-[#161d2a] border border-slate-200 dark:border-slate-800 space-y-3">
               <div class="flex items-center justify-between">
                 <span class="text-xs font-black text-slate-800 dark:text-gray-200 flex items-center gap-1.5">
                   <i class="fa-solid fa-hand text-amber-500"></i> 내전 참가 투표하기
                 </span>
-                <span class="text-[10px] text-slate-400">※ 보류 시 참여 가능 시간을 지정하여 대기열로 등록됩니다.</span>
+                <span class="text-[10px] text-slate-400">※ 불참 또는 보류 시 사유를 남길 수 있습니다.</span>
               </div>
               <div class="grid grid-cols-1 sm:grid-cols-12 gap-2">
                 <div class="sm:col-span-5">
@@ -472,6 +472,11 @@
                     불참
                   </button>
                 </div>
+              </div>
+
+              <!-- 🌟 불참 / 보류 사유 입력 인풋 (여기에 사유 작성 가능) -->
+              <div>
+                <input id="sched-reason-input" type="text" placeholder="불참 또는 보류 사유를 적어주세요 (예: 야근 때문에 11시 이후 가능, 회식 등)" class="w-full bg-white dark:bg-[#121721] border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 dark:text-gray-200 focus:outline-none focus:border-amber-500">
               </div>
             </div>
 
