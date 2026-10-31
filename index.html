@@ -3429,13 +3429,23 @@ function resetMatchHistory() {
           showToast('관리자 계정에서 로그아웃되었습니다.', 'info');
         }
       } else {
-        document.getElementById('admin-pin-input').value = '';
-        document.getElementById('modal-admin-auth').classList.remove('hidden');
+        const modal = document.getElementById('modal-admin-auth');
+        const input = document.getElementById('admin-pin-input');
+        if (input) input.value = '';
+        if (modal) {
+          modal.classList.remove('hidden');
+          modal.classList.add('flex');
+          if (input) setTimeout(() => input.focus(), 50);
+        }
       }
     }
 
     function closeAdminAuthModal() {
-      document.getElementById('modal-admin-auth').classList.add('hidden');
+      const modal = document.getElementById('modal-admin-auth');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      }
     }
 
     function handleAdminLoginSubmit(e) {
@@ -4006,7 +4016,7 @@ function resetMatchHistory() {
   </script>
 
   <!-- 👑 관리자(이준희) 전용 인증 모달 -->
-  <div id="modal-admin-auth" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+  <div id="modal-admin-auth" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden items-center justify-center p-4">
     <div class="bg-white dark:bg-[#121721] border border-slate-200 dark:border-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 relative">
       <button onclick="closeAdminAuthModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-sm"><i class="fa-solid fa-xmark"></i></button>
       <div class="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-500 text-xl mb-3 mx-auto">
