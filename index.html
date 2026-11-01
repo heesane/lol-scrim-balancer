@@ -1691,22 +1691,6 @@ sortedChamps.forEach((g, idx) => {
       };
     }
 
-      // 🌟 [핵심 수정] 승리 시 무조건 상승, 패배 시 무조건 하향되는 순수 누적 Elo 가감 방식
-      const netWins = scrimWins - scrimLosses;
-      const winScoreImpact = netWins * 70; // 1승당 +70pt, 1패당 -70pt 정직한 가감
-      const formImpact = ((p.formScore || 75) - 75) * 6.0; // 실측 폼 점수 반영 (기준 75점)
-      const carryBonusImpact = (p.carryBonus || 0);
-
-      const pureScrimScore = rawRankMMR + winScoreImpact + formImpact + carryBonusImpact;
-      const compositeMMR = (pureScrimScore * 0.80) + (rawRankMMR * 0.20);
-      const minFloor = Math.round(peakPts * 0.70); // 최고 티어 70% 하한선
-
-      return {
-        mmr: Math.max(minFloor, Math.round(compositeMMR)),
-        scrimWeightPct: 80
-      };
-    }
-
 // 롤 168개 챔피언 라인별 분류 매핑 (DDragon 규격)
     const CHAMPION_ROLES = {
       TOP: ['가렌', '갱플랭크', '그라가스', '그웬', '나르', '나서스', '다리우스', '럼블', '레넥톤', '렝가', '리븐', '말파이트', '모데카이저', '문도 박사', '볼리베어', '뽀삐', '사이온', '사일러스', '세트', '쉔', '신지드', '아트록스', '야스오', '암베사', '오른', '올라프', '요네', '요릭', '우디르', '우르곳', '워윅', '이렐리아', '일라오이', '잭스', '제이스', '초가스', '카밀', '카산테', '크산테', '케넨', '케일', '퀸', '클레드', '타릭', '탐 켄치', '트린다미어', '티모', '판테온', '피오라', '하이머딩거'],
