@@ -1637,8 +1637,7 @@ sortedChamps.forEach((g, idx) => {
       return tierBase + divBonus + lp;
     }
 
-    function getPlayerMMR(p) {
-      // 🌟 기초 체급 환산 (솔랭 50% + 최고티어 30% + 자랭 20%)
+function getPlayerMMR(p) {
       const soloPts = parseRankPoints(p.soloTier);
       const flexPts = parseRankPoints(p.flexTier);
       const peakPts = parseRankPoints(p.peakDetail || p.peakTier || p.tier);
@@ -1664,13 +1663,26 @@ sortedChamps.forEach((g, idx) => {
       const scrimLosses = parseInt(p.losses || 0, 10);
       const totalScrimGames = scrimWins + scrimLosses;
 
-      // 🌟 내전 전적이 0판일 때는 보정된 기초 체급 100% 반환
       if (totalScrimGames === 0) {
-        return {
-          mmr: Math.round(rawRankMMR),
-          scrimWeightPct: 0
-        };
+        return { mmr: Math.round(rawRankMMR), scrimWeightPct: 0 };
       }
+
+      // 🌟 승리 시 +150pt, 패배 시 -150pt 정직한 누적 레이팅
+      const netWins = scrimWins - scrimLosses;
+      const winScoreImpact = netWins * 150;
+
+      // 🌟 실측 딥롤 스코어 평균 55점 기준 폼 보정
+      const formImpact = ((p.formScore || 55) - 55) * 8.0;
+      const carryBonusImpact = (p.carryBonus || 0);
+
+      const pureScrimScore = rawRankMMR + winScoreImpact + formImpact + carryBonusImpact;
+      const compositeMMR = (pureScrimScore * 0.90) + (rawRankMMR * 0.10);
+
+      return {
+        mmr: Math.round(compositeMMR),
+        scrimWeightPct: 90
+      };
+    }
 
       // 🌟 [핵심 수정] 승리 시 무조건 상승, 패배 시 무조건 하향되는 순수 누적 Elo 가감 방식
       const netWins = scrimWins - scrimLosses;
