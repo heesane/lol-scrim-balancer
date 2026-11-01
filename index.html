@@ -1638,10 +1638,9 @@ sortedChamps.forEach((g, idx) => {
     }
 
     function getPlayerMMR(p) {
-      // 🌟 전 티어 단계(IV~I) & LP(0~100LP) 1pt 단위 정밀 기준
+      // 🌟 기초 체급 환산 (솔랭 50% + 최고티어 30% + 자랭 20%)
       const soloPts = parseRankPoints(p.soloTier);
       const flexPts = parseRankPoints(p.flexTier);
-      // 과거 3년 최고 티어 세부사항(입력값 우선, 없으면 대표 티어)
       const peakPts = parseRankPoints(p.peakDetail || p.peakTier || p.tier);
 
       const sGames = parseInt(p.soloGames || 0, 10);
@@ -1649,32 +1648,23 @@ sortedChamps.forEach((g, idx) => {
       const hasSolo = sGames > 0 && !((p.soloTier || '').includes('언랭'));
       const hasFlex = fGames > 0 && !((p.flexTier || '').includes('언랭'));
 
-      // 🌟 기초 체급: 솔랭(50%) + 과거 최고 티어(30%) + 자랭(20%) 정확한 가중치 배분
       let rawRankMMR = 0;
       if (hasSolo && hasFlex) {
-        // 자랭이 솔랭보다 낮아서 즐겜한 경우 감점 방어
         const effectiveFlex = Math.max(flexPts, soloPts - 100);
         rawRankMMR = (soloPts * 0.50) + (peakPts * 0.30) + (effectiveFlex * 0.20);
-      } else if (hasSolo && !hasFlex) {
-        // 자랭 언랭: 솔랭 70% + 과거 최고 30%
+      } else if (hasSolo) {
         rawRankMMR = (soloPts * 0.70) + (peakPts * 0.30);
-      } else if (!hasSolo && hasFlex) {
-        // 솔랭 언랭 (이대경 님 등): 자랭 70% + 과거 최고 30%
+      } else if (hasFlex) {
         rawRankMMR = (flexPts * 0.70) + (peakPts * 0.30);
       } else {
         rawRankMMR = (parseRankPoints(p.tier) * 0.70) + (peakPts * 0.30);
-      }
-
-      // 하한선 방어: 과거 최고 티어의 85% 밑으로는 떨어지지 않음
-      if (peakPts > 0) {
-        rawRankMMR = Math.max(rawRankMMR, Math.round(peakPts * 0.85));
       }
 
       const scrimWins = parseInt(p.wins || 0, 10);
       const scrimLosses = parseInt(p.losses || 0, 10);
       const totalScrimGames = scrimWins + scrimLosses;
 
-      // 🌟 내전 전적이 0판일 때는 보정된 기초 체급 100%로 사전 밸런싱 가능
+      // 🌟 내전 전적이 0판일 때는 보정된 기초 체급 100% 반환
       if (totalScrimGames === 0) {
         return {
           mmr: Math.round(rawRankMMR),
@@ -1682,23 +1672,18 @@ sortedChamps.forEach((g, idx) => {
         };
       }
 
-      // 내전 전적 발생 시 80% 가중치 결합
-      let kFactor = 1.0;
-      if (totalScrimGames <= 3) kFactor = 1.5;
-      else if (totalScrimGames <= 7) kFactor = 1.2;
-
-      const scrimWinRate = scrimWins / totalScrimGames;
-      const winRateImpact = (scrimWinRate - 0.5) * 500 * kFactor;
-      const formImpact = ((p.formScore || 75) - 75) * 5.0 * kFactor;
+      // 🌟 [핵심 수정] 승리 시 무조건 상승, 패배 시 무조건 하향되는 순수 누적 Elo 가감 방식
+      const netWins = scrimWins - scrimLosses;
+      const winScoreImpact = netWins * 70; // 1승당 +70pt, 1패당 -70pt 정직한 가감
+      const formImpact = ((p.formScore || 75) - 75) * 6.0; // 실측 폼 점수 반영 (기준 75점)
       const carryBonusImpact = (p.carryBonus || 0);
 
-      const pureScrimScore = rawRankMMR + winRateImpact + formImpact + carryBonusImpact;
-
-      // 🌟 내전 실적 80% + 기초 체급 20% 결합 유지
+      const pureScrimScore = rawRankMMR + winScoreImpact + formImpact + carryBonusImpact;
       const compositeMMR = (pureScrimScore * 0.80) + (rawRankMMR * 0.20);
+      const minFloor = Math.round(peakPts * 0.70); // 최고 티어 70% 하한선
 
       return {
-        mmr: Math.round(compositeMMR),
+        mmr: Math.max(minFloor, Math.round(compositeMMR)),
         scrimWeightPct: 80
       };
     }
