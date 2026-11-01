@@ -1638,7 +1638,7 @@ sortedChamps.forEach((g, idx) => {
     }
 
       function getPlayerMMR(p) {
-      // 1. 기초 티어 체급 산출 (솔랭 50% + 최고티어 30% + 자랭 20%)
+      // 1. 기초 체급 환산 (솔랭 50% + 최고티어 30% + 자랭 20%)
       const soloPts = parseRankPoints(p.soloTier);
       const flexPts = parseRankPoints(p.flexTier);
       const peakPts = parseRankPoints(p.peakDetail || p.peakTier || p.tier);
@@ -1664,34 +1664,30 @@ sortedChamps.forEach((g, idx) => {
       const scrimLosses = parseInt(p.losses || 0, 10);
       const totalScrimGames = scrimWins + scrimLosses;
 
-      // 내전 전적 0판일 때는 기본 체급 100%
+      // 내전 0판은 기초 체급 100%
       if (totalScrimGames === 0) {
         return { mmr: Math.round(rawRankMMR), scrimWeightPct: 0 };
       }
 
-      // 🌟 [괴리감 완화 핵심] 판당 승패 득실점을 약 1/3로 완화 (1승당 +45pt, 1패당 -45pt)
+      // 🌟 [핵심 해결] 승리 시 무조건 +60pt, 패배 시 무조건 -60pt 정직한 누적 (역전 버그 원천 차단)
       const netWins = scrimWins - scrimLosses;
-      const winScoreImpact = netWins * 45;
+      const winScoreImpact = netWins * 60;
 
-      // 🌟 폼 점수 가감 완화 (평균 55점 기준 점당 ±3pt)
-      const formImpact = ((p.formScore || 55) - 55) * 3.0;
+      // 🌟 실측 딥롤 스코어 평균 55점 기준 (55점 초과 시 가산, 미달 시 감점)
+      const formImpact = ((p.formScore || 55) - 55) * 4.0;
+      const carryBonusImpact = Math.min(50, p.carryBonus || 0);
 
-      // MVP/하드캐리 보너스 절제 (+20pt)
-      const carryBonusImpact = Math.min(60, p.carryBonus || 0) * 0.5;
-
-      // 🌟 기초 체급 비중을 40%로 복원하여 에메랄드가 마스터를 뚫지 못하게 앵커 역할 수행
+      // 내전 실적(70%) + 기초 체급(30%) 융합
       const pureScrimScore = rawRankMMR + winScoreImpact + formImpact + carryBonusImpact;
-      const compositeMMR = (pureScrimScore * 0.60) + (rawRankMMR * 0.40);
+      const compositeMMR = (pureScrimScore * 0.70) + (rawRankMMR * 0.30);
 
-      // 본체 체급 기준 상하한선 방어 (원래 체급의 ±500pt 이상 벗어나지 못하도록 락)
-      const minLimit = Math.round(rawRankMMR - 500);
-      const maxLimit = Math.round(rawRankMMR + 500);
-
-      const finalMMR = Math.max(minLimit, Math.min(maxLimit, Math.round(compositeMMR)));
+      // 기초 체급 대비 ±450pt 상하한선 락 (에메랄드가 마스터를 뚫거나 실버로 추락 방지)
+      const minLimit = Math.round(rawRankMMR - 450);
+      const maxLimit = Math.round(rawRankMMR + 450);
 
       return {
-        mmr: finalMMR,
-        scrimWeightPct: 60
+        mmr: Math.max(minLimit, Math.min(maxLimit, Math.round(compositeMMR))),
+        scrimWeightPct: 70
       };
     }
 
