@@ -3762,7 +3762,7 @@ function submitRsvpVote(voteType) {
         const pin = prompt('관리자(이준희) 비밀번호를 입력하세요:');
         if (pin === null) return;
         const cleanPin = pin.trim();
-        if (cleanPin === 'wnsgml42' || cleanPin === '660330' || cleanPin === 'admin' || cleanPin === '1111') {
+        if (cleanPin === 'wnsgml42') {
           isAdminLoggedIn = true;
           localStorage.setItem('scrim_admin_auth', 'true');
           updateAdminButtonUI();
@@ -3774,9 +3774,25 @@ function submitRsvpVote(voteType) {
       }
     }
 
-    function closeAdminAuthModal() {}
-    function handleAdminLoginSubmit(e) { if(e) e.preventDefault(); }
-    function submitAdminLogin(e) { if(e) e.preventDefault(); }
+    function closeAdminAuthModal() {
+      document.getElementById('modal-admin-auth')?.classList.add('hidden');
+    }
+    function handleAdminLoginSubmit(e) {
+      if(e) e.preventDefault();
+      const input = document.getElementById('admin-pin-input');
+      const pin = input ? input.value.trim() : '';
+      if (pin === 'wnsgml42') {
+        isAdminLoggedIn = true;
+        localStorage.setItem('scrim_admin_auth', 'true');
+        updateAdminButtonUI();
+        renderAllViews();
+        closeAdminAuthModal();
+        showToast('환영합니다 이준희 관리자님! 모든 관리 권한이 활성화되었습니다. 👑', 'success');
+      } else {
+        showToast('관리자 비밀번호가 일치하지 않습니다.', 'error');
+      }
+    }
+    function submitAdminLogin(e) { handleAdminLoginSubmit(e); }
 
     function updateAdminButtonUI() {
       const btn = document.getElementById('btn-admin-auth');
@@ -4205,7 +4221,7 @@ function submitRsvpVote(voteType) {
 
       const inputPw = prompt('글 작성 시 설정한 비밀번호를 입력하세요:');
       if (inputPw === null) return;
-      if (inputPw === (p.password || '1111') || inputPw === 'wnsgml42' || inputPw === '660330') {
+      if (inputPw === p.password || inputPw === 'wnsgml42') {
         closeViewPostModal();
         openWritePostModal(postId);
       } else {
@@ -4230,7 +4246,7 @@ function submitRsvpVote(voteType) {
 
       const inputPw = prompt('글 작성 시 설정한 비밀번호를 입력하세요:');
       if (inputPw === null) return;
-      if (inputPw === (p.password || '1111') || inputPw === 'wnsgml42' || inputPw === '660330') {
+      if (inputPw === p.password || inputPw === 'wnsgml42') {
         if (confirm('정말 이 게시글을 삭제하시겠습니까?')) {
           communityPosts = communityPosts.filter(item => item.id !== postId);
           saveLocalData();
@@ -4292,7 +4308,7 @@ function submitRsvpVote(voteType) {
 
       const inputPw = prompt('댓글 작성 시 설정한 비밀번호를 입력하세요:');
       if (inputPw === null) return;
-      if (inputPw === (targetComment.password || '1111') || inputPw === 'wnsgml42' || inputPw === '660330') {
+      if (inputPw === targetComment.password || inputPw === 'wnsgml42') {
         p.comments.splice(commentIdx, 1);
         saveLocalData();
         openViewPostModal(postId);
