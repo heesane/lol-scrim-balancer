@@ -1616,16 +1616,16 @@ sortedChamps.forEach((g, idx) => {
       if (!tierStr || tierStr.includes('언랭') || tierStr.includes('조회')) return 1800;
       const str = tierStr.toUpperCase();
       let tierBase = 2000;
-      if (str.includes('CHALLENGER') || str.includes('CH ')) tierBase = 4300;
-      else if (str.includes('GRANDMASTER') || str.includes('GM ')) tierBase = 3700;
-      else if (str.includes('MASTER') || str.includes('MA ')) tierBase = 3200;
-      else if (str.includes('DIAMOND') || str.includes('DI ')) tierBase = 2800;
-      else if (str.includes('EMERALD') || str.includes('EM ')) tierBase = 2400;
-      else if (str.includes('PLATINUM') || str.includes('PL ')) tierBase = 2000;
-      else if (str.includes('GOLD') || str.includes('GO ')) tierBase = 1600;
-      else if (str.includes('SILVER') || str.includes('SI ')) tierBase = 1200;
-      else if (str.includes('BRONZE') || str.includes('BR ')) tierBase = 800;
-      else if (str.includes('IRON') || str.includes('IR ')) tierBase = 400;
+      if (str.includes('CHALLENGER') || str.match(/\bCH\b|\bC\s*\(/)) tierBase = 4300;
+      else if (str.includes('GRANDMASTER') || str.match(/\bGM\b/)) tierBase = 3700;
+      else if (str.includes('MASTER') || str.match(/\bMA\b|\bM\b|\bM\s*\(/)) tierBase = 3200;
+      else if (str.includes('DIAMOND') || str.match(/\bDI\b|\bD\b|\bD\s*\(/)) tierBase = 2800;
+      else if (str.includes('EMERALD') || str.match(/\bEM\b|\bE\b|\bE\s*\(/)) tierBase = 2400;
+      else if (str.includes('PLATINUM') || str.match(/\bPL\b|\bP\b|\bP\s*\(/)) tierBase = 2000;
+      else if (str.includes('GOLD') || str.match(/\bGO\b|\bG\b|\bG\s*\(/)) tierBase = 1600;
+      else if (str.includes('SILVER') || str.match(/\bSI\b|\bS\b|\bS\s*\(/)) tierBase = 1200;
+      else if (str.includes('BRONZE') || str.match(/\bBR\b|\bB\b|\bB\s*\(/)) tierBase = 800;
+      else if (str.includes('IRON') || str.match(/\bIR\b|\bI\s*\(/)) tierBase = 400;
 
       // 단계별 (IV: 0pt, III: 100pt, II: 200pt, I: 300pt)
       let divBonus = 0;
