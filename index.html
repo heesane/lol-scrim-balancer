@@ -1056,6 +1056,14 @@
             <input id="form-flex-games" type="number" value="25" class="w-full bg-white dark:bg-[#121721] border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5">
           </div>
         </div>
+        <!-- 🌟 관리자/방장 전용 히든 체급(본캐 보정) 입력칸: 카드에 노출되지 않고 실력만 반영 -->
+        <div class="p-3 bg-amber-500/5 dark:bg-amber-500/10 rounded-xl border border-amber-500/30 space-y-1.5">
+          <div class="flex items-center justify-between">
+            <label for="form-custom-base" class="block font-bold text-amber-500 text-xs">🔒 본캐 / 실력 보정 티어 (히든 체급 설정)</label>
+            <span class="text-[10px] text-slate-400">※ 부캐 밸런스 조정용 (카드 UI에 안 뜸)</span>
+          </div>
+          <input id="form-custom-base" type="text" placeholder="비워두면 솔랭/자랭 자동 계산 (예: M (550LP), M (400LP), GM (600LP))" class="w-full bg-white dark:bg-[#121721] border border-amber-500/40 rounded-xl px-3 py-2 text-xs font-bold text-amber-500 focus:outline-none">
+        </div>
         <div>
           <label for="form-champions" class="block text-slate-700 dark:text-gray-300 font-semibold mb-1">모스트 챔피언 (쉼표 구분)</label>
           <input id="form-champions" type="text" placeholder="진, 이즈리얼, 시비르" class="w-full bg-slate-50 dark:bg-[#161d2a] border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2">
@@ -1649,7 +1657,10 @@ sortedChamps.forEach((g, idx) => {
       const hasFlex = fGames > 0 && !((p.flexTier || '').includes('언랭'));
 
       let rawRankMMR = 0;
-      if (hasSolo && hasFlex) {
+      // 🌟 [히든 체급 설정 반영]: 부캐 양학 방지용 본캐 티어가 설정되어 있으면 우선 적용
+      if (p.customBaseTier && p.customBaseTier.trim()) {
+        rawRankMMR = parseRankPoints(p.customBaseTier.trim());
+      } else if (hasSolo && hasFlex) {
         const effectiveFlex = Math.max(flexPts, soloPts - 100);
         rawRankMMR = (soloPts * 0.50) + (peakPts * 0.30) + (effectiveFlex * 0.20);
       } else if (hasSolo) {
@@ -1832,6 +1843,7 @@ sortedChamps.forEach((g, idx) => {
         most: data.mostChamps && data.mostChamps.length ? data.mostChamps : (idx >= 0 ? summoners[idx].most : []),
         // 🌟 밸런서 판정용 전체 숙련도 챔피언 풀 영구 보존
         playedChamps: data.playedChamps && data.playedChamps.length ? data.playedChamps : (idx >= 0 && summoners[idx].playedChamps ? summoners[idx].playedChamps : (data.mostChamps || [])),
+        customBaseTier: idx >= 0 ? (summoners[idx].customBaseTier || '') : '',
         formScore: idx >= 0 ? summoners[idx].formScore : 85,
         wins: idx >= 0 ? summoners[idx].wins : 0,
         losses: idx >= 0 ? summoners[idx].losses : 0
@@ -2979,6 +2991,7 @@ function resetMatchHistory() {
       document.getElementById('form-flex-tier').value = p.flexTier || '';
       document.getElementById('form-solo-games').value = p.soloGames || 0;
       document.getElementById('form-flex-games').value = p.flexGames || 0;
+      document.getElementById('form-custom-base').value = p.customBaseTier || '';
       document.getElementById('form-champions').value = (p.most || []).join(', ');
       document.getElementById('modal-summoner').classList.remove('hidden');
     }
@@ -3009,6 +3022,7 @@ function resetMatchHistory() {
         flexTier: document.getElementById('form-flex-tier').value.trim() || '언랭',
         soloGames: parseInt(document.getElementById('form-solo-games').value, 10) || 0,
         flexGames: parseInt(document.getElementById('form-flex-games').value, 10) || 0,
+        customBaseTier: document.getElementById('form-custom-base').value.trim(),
         most: document.getElementById('form-champions').value.split(',').map(c => c.trim()).filter(Boolean),
         formScore: 85
       };
