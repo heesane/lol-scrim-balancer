@@ -541,6 +541,11 @@
             <div class="bg-white dark:bg-[#121721] border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col lg:flex-row items-center justify-between gap-4 shadow-lg">
               <div class="flex items-center gap-4 flex-wrap">
                 <div class="flex items-center gap-2">
+                  <span class="text-xs text-slate-500">대진 옵션:</span>
+                  <span id="stat-candidate-badge" class="text-xs font-black px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-500 border border-amber-500/40">1대안 (최적)</span>
+                </div>
+                <div class="h-3 w-px bg-slate-300 dark:bg-slate-700 hidden sm:block"></div>
+                <div class="flex items-center gap-2">
                   <span class="text-xs text-slate-500">평균 MMR 격차:</span>
                   <span id="stat-avg-diff" class="text-sm font-extrabold text-amber-500">0 pt</span>
                 </div>
@@ -1186,6 +1191,8 @@
     let replayArchives = [];
     let isDrawerOpen = false;
     let draggedLaneData = null;
+    let balancedCandidates = []; // 🌟 1대안, 2대안, 3대안 등 다중 대진표 후보 리스트
+    let currentCandidateIdx = 0;
 
     function initTheme() {
       const savedTheme = localStorage.getItem('scrim_theme') || 'dark';
@@ -1992,18 +1999,25 @@ sortedChamps.forEach((g, idx) => {
       return { assigned: bestPerm, score: highestScore };
     }
 
-    // 🌟 1~4순위 포지션 우선순위 및 내전 80% 가중치 기반 스마트 밸런싱 실행
+    // 🌟 1~4순위 포지션 우선순위 및 내전 80% 가중치 기반 스마트 밸런싱 실행 (1~5대안 전체 산출)
     function runSmartBalancing() {
       if (selectedPlayerIds.size !== 10) return;
       const pool = summoners.filter(s => selectedPlayerIds.has(s.id));
       const teamCombos = getCombinations(pool, 5);
 
-      let bestMatch = null;
-      let minDeviation = Infinity;
+      const allMatches = [];
+      const evaluatedPairs = new Set(); // 중복 매칭 (팀A vs 팀B / 팀B vs 팀A) 방지
 
       for (let teamA of teamCombos) {
         const teamAIds = new Set(teamA.map(p => p.id));
         const teamB = pool.filter(p => !teamAIds.has(p.id));
+
+        // 고유 매칭 식별자 (팀A와 팀B가 맞바뀐 중복 검사)
+        const sigA = teamA.map(p => p.id).sort().join(',');
+        const sigB = teamB.map(p => p.id).sort().join(',');
+        const pairKey = [sigA, sigB].sort().join('__VS__');
+        if (evaluatedPairs.has(pairKey)) continue;
+        evaluatedPairs.add(pairKey);
 
         const blueOpt = assignOptimalRoles(teamA);
         const redOpt = assignOptimalRoles(teamB);
@@ -2020,22 +2034,43 @@ sortedChamps.forEach((g, idx) => {
         const totalRoleScore = blueOpt.score + redOpt.score;
         const rolePenalty = 1000 - totalRoleScore;
 
+        // 종합 편차 페널티 (낮을수록 균형적)
         const composite = (diff * 1.4) + (laneGapSum * 0.6) + (rolePenalty * 1.2);
 
-        if (composite < minDeviation) {
-          minDeviation = composite;
-          bestMatch = {
-            blue: blueOpt.assigned,
-            red: redOpt.assigned,
-            blueAvg: Math.round(blueSum / 5),
-            redAvg: Math.round(redSum / 5),
-            diff: Math.round(diff / 5),
-            roleSatisfaction: Math.round((totalRoleScore / 1000) * 100)
-          };
-        }
+        allMatches.push({
+          blue: blueOpt.assigned,
+          red: redOpt.assigned,
+          blueAvg: Math.round(blueSum / 5),
+          redAvg: Math.round(redSum / 5),
+          diff: Math.round(diff / 5),
+          roleSatisfaction: Math.round((totalRoleScore / 1000) * 100),
+          composite: composite
+        });
       }
 
-      currentMatch = bestMatch;
+      // 페널티가 낮은 순서(최적 균형 순)로 정렬
+      allMatches.sort((a, b) => a.composite - b.composite);
+
+      // 🌟 상위 5개 유효 대안(1대안, 2대안, 3대안, 4대안, 5대안) 보관
+      balancedCandidates = allMatches.slice(0, 5);
+      currentCandidateIdx = 0;
+
+      applyMatchCandidate(0, false);
+      showToast('1대안 (최적 균형) 대진표가 생성되었습니다! [재셔플]을 누르면 2대안, 3대안으로 전환됩니다.', 'success');
+    }
+
+    // 🌟 특정 대안(1대안, 2대안, 3대안...) 적용 함수
+    function applyMatchCandidate(idx, isReroll = true) {
+      if (!balancedCandidates || balancedCandidates.length === 0) return;
+      currentCandidateIdx = idx % balancedCandidates.length;
+      currentMatch = balancedCandidates[currentCandidateIdx];
+
+      // 대진 옵션 뱃지 업데이트
+      const candidateBadge = document.getElementById('stat-candidate-badge');
+      if (candidateBadge) {
+        const labels = ['1대안 (최적)', '2대안 (차선책)', '3대안 (라인스왑)', '4대안 (밸런스)', '5대안 (도전)'];
+        candidateBadge.textContent = labels[currentCandidateIdx] || `${currentCandidateIdx + 1}대안`;
+      }
 
       document.getElementById('stat-avg-diff').textContent = `${currentMatch.diff} pt`;
       document.getElementById('stat-role-score').textContent = `${currentMatch.roleSatisfaction}% 충족`;
@@ -2054,11 +2089,26 @@ sortedChamps.forEach((g, idx) => {
       document.getElementById('balancer-placeholder').classList.add('hidden');
       document.getElementById('balancer-board').classList.remove('hidden');
       saveLocalData();
-      showToast('1~4순위 희망 포지션 최적 밸런싱이 완료되었습니다! (드래그 스왑 가능)', 'success');
+
+      if (isReroll) {
+        showToast(`🔄 [${currentCandidateIdx + 1}대안 대진표]로 재셔플되었습니다! (MMR 격차: ${currentMatch.diff}pt, 라인 만족도: ${currentMatch.roleSatisfaction}%)`, 'info');
+      }
+    }
+
+    // 🌟 [재셔플] 버튼 클릭 시 1대안 -> 2대안 -> 3대안 -> 4대안 순환
+    function rerollBalancing() {
+      if (!balancedCandidates || balancedCandidates.length <= 1) {
+        runSmartBalancing();
+        return;
+      }
+      const nextIdx = (currentCandidateIdx + 1) % balancedCandidates.length;
+      applyMatchCandidate(nextIdx, true);
     }
 
     function clearMatchTeams() {
       currentMatch = null;
+      balancedCandidates = [];
+      currentCandidateIdx = 0;
       document.getElementById('balancer-placeholder')?.classList.remove('hidden');
       document.getElementById('balancer-board')?.classList.add('hidden');
       saveLocalData();
@@ -2074,8 +2124,6 @@ sortedChamps.forEach((g, idx) => {
       renderSidebarDrawerList();
       showToast(`[${removedPlayer.name}] 선수를 대진에서 제외했습니다.`, 'info');
     }
-
-    function rerollBalancing() { runSmartBalancing(); }
 
         
     // 🌟 롤 인게임 채팅 공유용 대진표 복사 (실명 우선)
