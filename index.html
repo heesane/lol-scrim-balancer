@@ -1056,13 +1056,13 @@
             <input id="form-flex-games" type="number" value="25" class="w-full bg-white dark:bg-[#121721] border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5">
           </div>
         </div>
-        <!-- 🌟 관리자/방장 전용 히든 체급(본캐 보정) 입력칸: 카드에 노출되지 않고 실력만 반영 -->
-        <div class="p-3 bg-amber-500/5 dark:bg-amber-500/10 rounded-xl border border-amber-500/30 space-y-1.5">
+        <!-- 🌟 관리자(이준희) 로그인 시에만 노출되는 시크릿 히든 체급 입력창 (일반인 열람 불가) -->
+        <div id="container-custom-base" class="hidden p-3 bg-amber-500/5 dark:bg-amber-500/10 rounded-xl border border-amber-500/30 space-y-1.5">
           <div class="flex items-center justify-between">
-            <label for="form-custom-base" class="block font-bold text-amber-500 text-xs">🔒 본캐 / 실력 보정 티어 (히든 체급 설정)</label>
-            <span class="text-[10px] text-slate-400">※ 부캐 밸런스 조정용 (카드 UI에 안 뜸)</span>
+            <label for="form-custom-base" class="block font-bold text-amber-500 text-xs">🔒 [관리자 전용] 히든 본캐 체급 / 보정 점수</label>
+            <span class="text-[10px] text-slate-400">※ 일반 유저에게 절대 안 보임</span>
           </div>
-          <input id="form-custom-base" type="text" placeholder="비워두면 솔랭/자랭 자동 계산 (예: M (550LP), M (400LP), GM (600LP))" class="w-full bg-white dark:bg-[#121721] border border-amber-500/40 rounded-xl px-3 py-2 text-xs font-bold text-amber-500 focus:outline-none">
+          <input id="form-custom-base" type="text" placeholder="예: M (550LP), 3700, GM (600LP) 등" class="w-full bg-white dark:bg-[#121721] border border-amber-500/40 rounded-xl px-3 py-2 text-xs font-bold text-amber-500 focus:outline-none">
         </div>
         <div>
           <label for="form-champions" class="block text-slate-700 dark:text-gray-300 font-semibold mb-1">모스트 챔피언 (쉼표 구분)</label>
@@ -1614,6 +1614,10 @@ sortedChamps.forEach((g, idx) => {
 // 🌟 통계적 신뢰도(판수 K-Factor) + 절제된 캐리력 보정 내전 80% MMR 엔진
     function parseRankPoints(tierStr) {
       if (!tierStr || tierStr.includes('언랭') || tierStr.includes('조회')) return 1800;
+      // 숫자만 직접 입력한 경우 (예: 3700)
+      if (typeof tierStr === 'string' && /^[0-9]{3,4}$/.test(tierStr.trim())) {
+        return parseInt(tierStr.trim(), 10);
+      }
       const str = tierStr.toUpperCase();
       let tierBase = 2000;
       if (str.includes('CHALLENGER') || str.match(/\bCH\b|\bC\s*\(/)) tierBase = 4300;
@@ -2992,6 +2996,10 @@ function resetMatchHistory() {
       document.getElementById('form-solo-games').value = p.soloGames || 0;
       document.getElementById('form-flex-games').value = p.flexGames || 0;
       document.getElementById('form-custom-base').value = p.customBaseTier || '';
+      const customBaseBox = document.getElementById('container-custom-base');
+      if (customBaseBox) {
+        customBaseBox.classList.toggle('hidden', !isAdminLoggedIn);
+      }
       document.getElementById('form-champions').value = (p.most || []).join(', ');
       document.getElementById('modal-summoner').classList.remove('hidden');
     }
