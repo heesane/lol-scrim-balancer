@@ -764,46 +764,77 @@
         </div>
       </section>
 
-      <!-- SECTION 5: 내전 모스트 챔피언 통계 (OP.GG 상세 표 스타일) -->
+            <!-- SECTION 5: 내전 모스트 챔피언 통계 (퍼스트 모스트 카드 뷰 + 상세 챔피언 표) -->
       <section id="tab-content-most" class="hidden space-y-4">
-        <div class="bg-white dark:bg-[#121721] border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-lg">
-          <div>
-            <h2 class="text-base font-bold text-slate-900 dark:text-gray-100 flex items-center gap-2">
-              <i class="fa-solid fa-trophy text-amber-500"></i>
-              <span>내전 챔피언 통계 (내전 모스트)</span>
-            </h2>
-            <p class="text-xs text-slate-500 dark:text-gray-400">내전 매치 히스토리에서 실제로 플레이한 모든 챔피언의 승률, KDA, 딜량, 킬 지표를 집계합니다.</p>
+        
+        <!-- 1. 소환사별 퍼스트(1위) 모스트 목록 뷰 -->
+        <div id="most-overview-container" class="space-y-4">
+          <div class="bg-white dark:bg-[#121721] border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-lg">
+            <div>
+              <h2 class="text-base font-bold text-slate-900 dark:text-gray-100 flex items-center gap-2">
+                <i class="fa-solid fa-trophy text-amber-500"></i>
+                <span>소환사별 퍼스트(1위) 내전 모스트</span>
+              </h2>
+              <p class="text-xs text-slate-500 dark:text-gray-400 mt-0.5">각 소환사를 클릭하면 해당 멤버의 전체 내전 챔피언 상세 기록을 확인할 수 있습니다.</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-slate-400 font-bold"><i class="fa-solid fa-users text-amber-500 mr-1"></i>참여 멤버:</span>
+              <span id="most-active-player-count" class="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-500 font-black text-xs">0명</span>
+            </div>
           </div>
-          <div class="flex items-center gap-2">
-            <label class="text-xs text-slate-500">소환사 필터:</label>
-            <select id="most-summoner-filter" onchange="renderMostStatsTable()" class="bg-slate-50 dark:bg-[#161d2a] border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-800 dark:text-gray-200 focus:outline-none">
-              <option value="ALL">전체 내전 참가자 합산</option>
-            </select>
+
+          <!-- 소환사별 1위 모스트 카드 그리드 -->
+          <div id="most-members-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
+            <!-- 자바스크립트로 소환사별 1위 모스트 카드 렌더링 -->
           </div>
         </div>
 
-        <div class="bg-white dark:bg-[#121721] border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-          <div class="overflow-x-auto">
-            <table class="w-full text-left text-xs whitespace-nowrap">
-              <thead class="bg-slate-50 dark:bg-[#161d2a] text-slate-500 dark:text-slate-400 text-[11px] border-b border-slate-200 dark:border-slate-800 font-bold select-none">
-                <tr>
-                  <th class="py-3 px-3 text-center w-10">#</th>
-                  <th class="py-3 px-4">챔피언</th>
-                  <th class="py-3 px-4 text-center">게임 수</th>
-                  <th class="py-3 px-4 text-center">승/패(승률)</th>
-                  <th class="py-3 px-4 text-center">KDA</th>
-                  <th class="py-3 px-4 text-center">피해량/분</th>
-                  <th class="py-3 px-4 text-center">CS/분</th>
-                  <th class="py-3 px-4 text-center">킬관여</th>
-                  <th class="py-3 px-4 text-center">AI-Score</th>
-                </tr>
-              </thead>
-              <tbody id="most-stats-tbody" class="divide-y divide-slate-100 dark:divide-slate-800/60 font-medium">
-                <!-- 자바스크립트로 딥롤 스타일 렌더링 -->
-              </tbody>
-            </table>
+        <!-- 2. 특정 소환사 상세 내전 챔피언 기록 뷰 (2번째 사진 스타일의 전체 전적 테이블) -->
+        <div id="most-detail-container" class="hidden space-y-4">
+          <div class="bg-white dark:bg-[#121721] border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-lg">
+            <div class="flex items-center gap-3">
+              <button onclick="closeMostDetailView()" class="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-[#161d2a] hover:bg-slate-200 dark:hover:bg-slate-800 text-xs font-bold text-slate-700 dark:text-gray-200 flex items-center gap-2 transition cursor-pointer shadow-sm">
+                <i class="fa-solid fa-arrow-left text-amber-500"></i> <span>퍼스트 모스트 목록으로</span>
+              </button>
+              <div id="most-detail-player-header" class="flex items-center gap-2">
+                <!-- 선택된 소환사 프로필 뱃지 자바스크립트 렌더링 -->
+              </div>
+            </div>
+
+            <!-- 소환사 빠른 전환 드롭다운 (전체 합산 제외) -->
+            <div class="flex items-center gap-2">
+              <label for="most-summoner-filter" class="text-xs text-slate-500 font-bold">소환사 선택:</label>
+              <select id="most-summoner-filter" onchange="openMostDetailView(this.value)" class="bg-slate-50 dark:bg-[#161d2a] border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-800 dark:text-gray-200 font-bold focus:outline-none">
+                <!-- 소환사 목록 자바스크립트로 렌더링 -->
+              </select>
+            </div>
+          </div>
+
+          <!-- 🌟 2번째 사진 스타일의 전체 챔피언 전적 표 (DEEPLOL / OP.GG 규격) -->
+          <div class="bg-white dark:bg-[#121721] border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs whitespace-nowrap">
+                <thead class="bg-slate-50 dark:bg-[#161d2a] text-slate-500 dark:text-slate-400 text-[11px] border-b border-slate-200 dark:border-slate-800 font-bold select-none">
+                  <tr>
+                    <th class="py-3 px-3 text-center w-10">#</th>
+                    <th class="py-3 px-4">챔피언</th>
+                    <th class="py-3 px-4 text-center">게임 수</th>
+                    <th class="py-3 px-4 text-center">승/패 (승률)</th>
+                    <th class="py-3 px-4 text-center">KDA</th>
+                    <th class="py-3 px-4 text-center">피해량/분</th>
+                    <th class="py-3 px-4 text-center">CS/분</th>
+                    <th class="py-3 px-4 text-center">킬관여</th>
+                    <th class="py-3 px-4 text-center">AI-Score</th>
+                  </tr>
+                </thead>
+                <tbody id="most-stats-tbody" class="divide-y divide-slate-100 dark:divide-slate-800/60 font-medium">
+                  <!-- 자바스크립트로 해당 소환사의 전적 렌더링 -->
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
+
       </section>
 
 <!-- SECTION 6: 자유게시판 (COMMUNITY - 인페이지 뷰 개편) -->
@@ -1469,49 +1500,248 @@ function syncStatsFromHistory() {
       });
     }
 
-// 🌟 첨부 사진 스타일의 내전 모스트 챔피언 상세 표 렌더러
-    function renderMostStatsTable() {
-      const tbody = document.getElementById('most-stats-tbody');
-      const selectFilter = document.getElementById('most-summoner-filter');
-      if (!tbody) return;
 
+    // ==========================================
+    // 🏆 내전 모스트: 소환사별 퍼스트(1위) 모스트 + 클릭 시 2번째 사진 상세 표 뷰
+    // ==========================================
+    let currentViewingMostSummoner = null;
+
+    function renderMostStatsTable() {
+      renderMostMembersOverview();
+      if (currentViewingMostSummoner) {
+        renderMostDetailTable(currentViewingMostSummoner);
+      }
+    }
+
+    // 1. 소환사별 퍼스트(1위) 모스트 카드 목록 렌더링
+    function renderMostMembersOverview() {
+      const grid = document.getElementById('most-members-grid');
+      const countBadge = document.getElementById('most-active-player-count');
+      const navCount = document.getElementById('nav-most-count');
+      if (!grid) return;
+      grid.innerHTML = '';
+
+      // 각 소환사별 내전 챔피언 데이터 집계
+      const memberSummaries = [];
+
+      summoners.forEach(s => {
+        const champMap = {};
+        let totalGames = 0, totalW = 0, totalL = 0;
+
+        matchHistory.forEach(m => {
+          const isBlueWin = (m.winner === 'BLUE');
+          const durMin = Math.max(10, parseInt(m.duration) || 25);
+          const blueKills = (m.blue || []).reduce((acc, p) => acc + (parseInt(p.kda?.split('/')[0]) || 0), 0);
+          const redKills = (m.red || []).reduce((acc, p) => acc + (parseInt(p.kda?.split('/')[0]) || 0), 0);
+
+          const inBlue = (m.blue || []).find(p => isSameSummonerName(p.name, s.name));
+          const inRed = (m.red || []).find(p => isSameSummonerName(p.name, s.name));
+          const pData = inBlue || inRed;
+
+          if (pData) {
+            totalGames++;
+            const isWin = inBlue ? isBlueWin : !isBlueWin;
+            if (isWin) totalW++; else totalL++;
+
+            const cName = pData.champion || pData.most || '챔피언';
+            if (!champMap[cName]) {
+              champMap[cName] = { name: cName, count: 0, wins: 0, losses: 0, kills: 0, deaths: 0, assists: 0, scoreSum: 0, dmgSum: 0, csSum: 0, durSum: 0 };
+            }
+            const g = champMap[cName];
+            g.count++;
+            if (isWin) g.wins++; else g.losses++;
+
+            const kdaParts = (pData.kda || '0/0/0').split(' ')[0].split('/');
+            g.kills += parseInt(kdaParts[0]) || 0;
+            g.deaths += parseInt(kdaParts[1]) || 0;
+            g.assists += parseInt(kdaParts[2]) || 0;
+            g.scoreSum += parseInt(pData.aiScore) || 50;
+            g.dmgSum += parseInt((pData.damage || '0').toString().replace(/,/g, '')) || 0;
+            g.csSum += parseInt(pData.cs) || 120;
+            g.durSum += durMin;
+          }
+        });
+
+        // 1위 챔피언 찾기
+        const champList = Object.values(champMap).sort((a, b) => b.count - a.count);
+        const top1 = champList[0] || null;
+
+        memberSummaries.push({
+          summoner: s,
+          totalGames,
+          wins: totalW,
+          losses: totalL,
+          topChamp: top1,
+          allChamps: champList
+        });
+      });
+
+      // 내전 판수 많은 순 정렬
+      memberSummaries.sort((a, b) => b.totalGames - a.totalGames);
+
+      if (countBadge) countBadge.textContent = `${memberSummaries.filter(m => m.totalGames > 0).length}명 경기 기록 중`;
+      if (navCount) navCount.textContent = memberSummaries.filter(m => m.totalGames > 0).length;
+
+      // 소환사 드롭다운 옵션 채우기 (전체 합산 제외)
+      const selectFilter = document.getElementById('most-summoner-filter');
       if (selectFilter) {
-        const currentVal = selectFilter.value || 'ALL';
-        selectFilter.innerHTML = `<option value="ALL">전체 내전 참가자 합산</option>` + 
-          summoners.map(s => `<option value="${s.name}" ${s.name === currentVal ? 'selected' : ''}>${s.name}</option>`).join('');
+        selectFilter.innerHTML = memberSummaries.map(m => `
+          <option value="${m.summoner.name}">${m.summoner.name} ${m.summoner.description ? `(${m.summoner.description})` : ''} - ${m.totalGames}전</option>
+        `).join('');
       }
 
-      const selectedName = selectFilter?.value || 'ALL';
+      if (memberSummaries.length === 0 || memberSummaries.every(m => m.totalGames === 0)) {
+        grid.innerHTML = `<div class="col-span-full py-12 text-center text-xs text-slate-400 bg-white dark:bg-[#121721] rounded-2xl border border-slate-200 dark:border-slate-800">아직 기록된 내전 경기가 없습니다. 내전이 완료되면 소환사별 1위 퍼스트 모스트가 자동으로 생성됩니다.</div>`;
+        return;
+      }
+
+      memberSummaries.forEach(m => {
+        const s = m.summoner;
+        const top = m.topChamp;
+        const totalWinRate = m.totalGames > 0 ? Math.round((m.wins / m.totalGames) * 100) : 0;
+
+        const card = document.createElement('div');
+        card.onclick = () => openMostDetailView(s.name);
+        card.className = "p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121721] hover:border-amber-500/60 shadow-md hover:shadow-xl transition-all cursor-pointer flex flex-col justify-between group";
+
+        let topChampHtml = '';
+        if (top) {
+          const champKo = getChampionKoName(top.name);
+          const iconUrl = getChampionIconUrl(champKo);
+          const cleanEn = CHAMPION_NAME_KO_TO_EN[champKo] || champKo;
+          const champWinRate = Math.round((top.wins / top.count) * 100);
+          const kdaRatio = top.deaths === 0 ? 'Perfect' : ((top.kills + top.assists) / top.deaths).toFixed(2);
+          const avgScore = Math.round(top.scoreSum / top.count);
+
+          topChampHtml = `
+            <div class="mt-3 p-3 rounded-xl bg-slate-50 dark:bg-[#161d2a] border border-slate-200 dark:border-slate-700/60 flex items-center justify-between gap-3 group-hover:border-amber-400/50 transition">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <div class="relative shrink-0">
+                  <div class="w-12 h-12 rounded-xl overflow-hidden border-2 border-amber-500 shadow-md bg-slate-900">
+                    ${iconUrl 
+                      ? `<img src="${iconUrl}" alt="${champKo}" class="w-full h-full object-cover" onerror="this.onerror=null; this.src='https://opgg-static.akamaized.net/meta/images/lol/latest/champion/${cleanEn}.png';">`
+                      : `<div class="w-full h-full flex items-center justify-center font-black text-amber-400 text-xs">${champKo.slice(0, 2)}</div>`
+                    }
+                  </div>
+                  <span class="absolute -top-1.5 -left-1.5 px-1.5 py-0.2 rounded-full bg-amber-500 text-gray-950 text-[9px] font-black border border-amber-400">1위</span>
+                </div>
+                <div class="min-w-0">
+                  <div class="flex items-center gap-1.5">
+                    <span class="font-extrabold text-sm text-slate-800 dark:text-gray-100 truncate">${champKo}</span>
+                    <span class="text-[10px] text-slate-400 font-bold">${top.count}판</span>
+                  </div>
+                  <div class="text-[11px] font-semibold text-slate-500 dark:text-gray-400">
+                    <span class="${champWinRate >= 50 ? 'text-emerald-500' : 'text-rose-500'} font-black">${champWinRate}%</span> (${top.wins}승 ${top.losses}패) · <strong class="text-slate-700 dark:text-gray-200">${kdaRatio}</strong>
+                  </div>
+                </div>
+              </div>
+              <div class="text-right shrink-0">
+                <span class="text-[9px] text-slate-400 block">AI-Score</span>
+                <span class="px-2 py-0.5 rounded text-xs font-black bg-amber-500/20 text-amber-500 border border-amber-500/40">${avgScore}점</span>
+              </div>
+            </div>
+          `;
+        } else {
+          topChampHtml = `
+            <div class="mt-3 p-3 rounded-xl bg-slate-50 dark:bg-[#161d2a] border border-dashed border-slate-200 dark:border-slate-800 text-center text-xs text-slate-400">
+              내전 플레이 기록 없음
+            </div>
+          `;
+        }
+
+        card.innerHTML = `
+          <div>
+            <!-- 소환사 프로필 헤더 -->
+            <div class="flex items-center justify-between gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
+              <div class="flex items-center gap-2 min-w-0">
+                <div class="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-500 text-xs shrink-0 font-black">
+                  <i class="fa-solid fa-user"></i>
+                </div>
+                <div class="min-w-0">
+                  <div class="flex items-center gap-1.5">
+                    <span class="font-black text-sm text-slate-800 dark:text-gray-100 truncate">${s.name}</span>
+                    ${s.description ? `<span class="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-500 text-[10px] font-black">${s.description}</span>` : ''}
+                  </div>
+                </div>
+              </div>
+              <span class="tier-badge tier-${(s.tier||'unranked').toLowerCase()} shrink-0">${s.tier}</span>
+            </div>
+
+            <!-- 🏆 1위 퍼스트 내전 모스트 정보 -->
+            ${topChampHtml}
+          </div>
+
+          <!-- 하단 안내 바 -->
+          <div class="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-400 font-semibold">
+            <span>내전 합산: <strong class="text-slate-700 dark:text-gray-200">${m.totalGames}전 ${m.wins}승 ${m.losses}패 (${totalWinRate}%)</strong></span>
+            <span class="text-amber-500 font-extrabold flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+              전체 모스트 보기 <i class="fa-solid fa-chevron-right text-[10px]"></i>
+            </span>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    // 2. 특정 소환사의 2번째 사진 스타일 전체 챔피언 기록 상세 표 열기
+    function openMostDetailView(summonerName) {
+      if (!summonerName) return;
+      currentViewingMostSummoner = summonerName;
+
+      document.getElementById('most-overview-container')?.classList.add('hidden');
+      document.getElementById('most-detail-container')?.classList.remove('hidden');
+
+      const selectFilter = document.getElementById('most-summoner-filter');
+      if (selectFilter) selectFilter.value = summonerName;
+
+      renderMostDetailTable(summonerName);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // 3. 특정 소환사의 전체 챔피언 표 렌더러 (2번째 사진 규격)
+    function renderMostDetailTable(summonerName) {
+      const tbody = document.getElementById('most-stats-tbody');
+      const headerBox = document.getElementById('most-detail-player-header');
+      if (!tbody) return;
+
+      const s = summoners.find(p => isSameSummonerName(p.name, summonerName)) || { name: summonerName, tier: 'UNRANKED' };
+
+      // 해당 소환사의 내전 경기 전체 추출
       const allEntries = [];
       matchHistory.forEach(m => {
-        const blueWin = (m.winner === 'BLUE');
+        const isBlueWin = (m.winner === 'BLUE');
         const durMin = Math.max(10, parseInt(m.duration) || 25);
         const blueKills = (m.blue || []).reduce((acc, p) => acc + (parseInt(p.kda?.split('/')[0]) || 0), 0);
         const redKills = (m.red || []).reduce((acc, p) => acc + (parseInt(p.kda?.split('/')[0]) || 0), 0);
 
-        (m.blue || []).forEach(p => {
-          if (selectedName === 'ALL' || isSameSummonerName(p.name, selectedName)) {
-            allEntries.push({ ...p, win: blueWin, duration: durMin, teamKills: blueKills });
-          }
-        });
-        (m.red || []).forEach(p => {
-          if (selectedName === 'ALL' || isSameSummonerName(p.name, selectedName)) {
-            allEntries.push({ ...p, win: !blueWin, duration: durMin, teamKills: redKills });
-          }
-        });
+        const inBlue = (m.blue || []).find(p => isSameSummonerName(p.name, summonerName));
+        const inRed = (m.red || []).find(p => isSameSummonerName(p.name, summonerName));
+
+        if (inBlue) {
+          allEntries.push({ ...inBlue, win: isBlueWin, duration: durMin, teamKills: blueKills });
+        } else if (inRed) {
+          allEntries.push({ ...inRed, win: !isBlueWin, duration: durMin, teamKills: redKills });
+        }
       });
 
-      const navMostCount = document.getElementById('nav-most-count');
-      if (navMostCount) navMostCount.textContent = new Set(allEntries.map(e => e.champion || e.most || '기타')).size;
+      if (headerBox) {
+        headerBox.innerHTML = `
+          <div class="flex items-center gap-2">
+            <span class="font-black text-sm text-slate-800 dark:text-gray-100">${s.name}</span>
+            ${s.description ? `<span class="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-500 text-xs font-black">${s.description}</span>` : ''}
+            <span class="tier-badge tier-${(s.tier||'unranked').toLowerCase()}">${s.tier}</span>
+            <span class="text-xs text-slate-400 font-bold ml-1">총 ${allEntries.length}경기 플레이</span>
+          </div>
+        `;
+      }
 
       if (allEntries.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="9" class="py-12 text-center text-xs text-slate-400">내전 기록이 없습니다.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" class="py-12 text-center text-xs text-slate-400">[${s.name}] 소환사의 내전 플레이 기록이 없습니다.</td></tr>`;
         return;
       }
 
       const champGroups = {};
-      let totalW = 0, totalL = 0, totalK = 0, totalD = 0, totalA = 0, totalScore = 0, totalDmg = 0, totalCs = 0, totalDur = 0;
-      let totalKpSum = 0;
+      let totalW = 0, totalL = 0, totalK = 0, totalD = 0, totalA = 0, totalScore = 0, totalDmg = 0, totalCs = 0, totalDur = 0, totalKpSum = 0;
 
       allEntries.forEach(e => {
         const cName = e.champion || e.most || '챔피언';
@@ -1555,34 +1785,33 @@ function syncStatsFromHistory() {
       const avgCspm = (totalCs / Math.max(1, totalDur)).toFixed(1);
       const avgKp = Math.round(totalKpSum / totalCount);
 
-      // 🌟 DeepLoL 실측 컬러 뱃지 (50+ 청록, 40-49 주황, 39- 빨강)
       function getBadgeHtml(score) {
         let colorClass = "bg-rose-600/90 text-white border border-rose-500/50";
-        if (score >= 50) colorClass = "bg-[#059669] text-white border border-emerald-400/40";
-        else if (score >= 40) colorClass = "bg-[#d97706] text-white border border-amber-400/40";
+        if (score >= 60) colorClass = "bg-[#059669] text-white border border-emerald-400/40";
+        else if (score >= 45) colorClass = "bg-[#d97706] text-white border border-amber-400/40";
         return `<span class="inline-flex items-center justify-center min-w-[38px] px-2 py-0.5 rounded-md font-black text-xs shadow-sm ${colorClass}">${score}</span>`;
       }
 
-      // 최상단 모든챔피언 종합 행
+      // 최상단 이 소환사의 종합 요약 행
       let rowsHtml = `
         <tr class="bg-slate-50/80 dark:bg-[#161a23] font-bold border-b-2 border-slate-200 dark:border-slate-700">
           <td class="py-3 px-3 text-center text-slate-400">-</td>
           <td class="py-3 px-4">
             <div class="flex items-center gap-2">
               <span class="text-emerald-500 font-bold">*</span>
-              <span class="text-sm font-extrabold text-slate-900 dark:text-gray-100">모든챔피언</span>
+              <span class="text-sm font-extrabold text-slate-900 dark:text-gray-100">전체 챔피언 종합</span>
             </div>
           </td>
           <td class="py-3 px-4 text-center font-bold text-slate-300">${totalCount}</td>
           <td class="py-3 px-4 text-center">
             <div class="inline-flex items-center gap-1">
-              <span class="px-1.5 py-0.5 rounded bg-blue-600 text-white text-[10px] font-bold">${totalW}</span>
-              <span class="px-1.5 py-0.5 rounded bg-rose-600 text-white text-[10px] font-bold">${totalL}</span>
+              <span class="px-2 py-0.5 rounded bg-blue-600 text-white text-[11px] font-bold">${totalW}승</span>
+              <span class="px-2 py-0.5 rounded bg-rose-600 text-white text-[11px] font-bold">${totalL}패</span>
               <span class="font-extrabold text-xs ml-1 ${totalWinRate >= 50 ? 'text-emerald-400' : 'text-slate-400'}">${totalWinRate}%</span>
             </div>
           </td>
           <td class="py-3 px-4 text-center">
-            <div class="font-black text-xs text-slate-100">${totalKdaRatio}</div>
+            <div class="font-black text-xs text-slate-100">${totalKdaRatio}:1</div>
             <div class="text-[10px] text-slate-400">(${avgK} / ${avgD} / ${avgA})</div>
           </td>
           <td class="py-3 px-4 text-center">
@@ -1597,9 +1826,10 @@ function syncStatsFromHistory() {
         </tr>
       `;
 
+      // 챔피언별 정렬: 게임 수 내림차순 (2번째 사진 규격)
       const sortedChamps = Object.values(champGroups).sort((a, b) => b.count - a.count);
 
-sortedChamps.forEach((g, idx) => {
+      sortedChamps.forEach((g, idx) => {
         const winRate = Math.round((g.wins / g.count) * 100);
         const kdaRatio = g.deaths === 0 ? 'Perfect' : ((g.kills + g.assists) / g.deaths).toFixed(2);
         const k = (g.kills / g.count).toFixed(1);
@@ -1619,25 +1849,25 @@ sortedChamps.forEach((g, idx) => {
             <td class="py-3 px-3 text-center text-slate-400 font-bold">${idx + 1}</td>
             <td class="py-3 px-4">
               <div class="flex items-center gap-2.5">
-                <div class="w-7 h-7 rounded-lg overflow-hidden bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0">
+                <div class="w-8 h-8 rounded-xl overflow-hidden bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0">
                   ${champIcon 
                     ? `<img src="${champIcon}" alt="${champKo}" class="w-full h-full object-cover" onerror="this.onerror=null; this.src='https://opgg-static.akamaized.net/meta/images/lol/latest/champion/${cleanEn}.png';">`
                     : `<span class="font-black text-amber-400 text-xs">${champKo.slice(0, 2)}</span>`
                   }
                 </div>
-                <span class="font-extrabold text-slate-200">${champKo}</span>
+                <span class="font-extrabold text-sm text-slate-200">${champKo}</span>
               </div>
             </td>
             <td class="py-3 px-4 text-center font-bold text-slate-300">${g.count}</td>
             <td class="py-3 px-4 text-center">
-              <div class="inline-flex items-center gap-1">
-                <span class="px-1.5 py-0.5 rounded bg-blue-600/90 text-white text-[10px] font-bold">${g.wins}</span>
-                <span class="px-1.5 py-0.5 rounded bg-rose-600/90 text-white text-[10px] font-bold">${g.losses}</span>
+              <div class="inline-flex items-center gap-1.5">
+                <span class="px-2 py-0.5 rounded bg-blue-600/90 text-white text-[10px] font-bold">${g.wins}승</span>
+                <span class="px-2 py-0.5 rounded bg-rose-600/90 text-white text-[10px] font-bold">${g.losses}패</span>
                 <span class="font-extrabold text-xs ml-1 ${winRate >= 50 ? 'text-emerald-400' : 'text-slate-400'}">${winRate}%</span>
               </div>
             </td>
             <td class="py-3 px-4 text-center">
-              <div class="font-black text-xs text-slate-200">${kdaRatio}</div>
+              <div class="font-black text-xs text-slate-200">${kdaRatio}:1</div>
               <div class="text-[10px] text-slate-400">(${k} / ${d} / ${a})</div>
             </td>
             <td class="py-3 px-4 text-center">
@@ -1654,6 +1884,14 @@ sortedChamps.forEach((g, idx) => {
       });
 
       tbody.innerHTML = rowsHtml;
+    }
+
+    // 4. 상세 뷰 닫고 퍼스트 모스트 목록으로 복귀
+    function closeMostDetailView() {
+      currentViewingMostSummoner = null;
+      document.getElementById('most-overview-container')?.classList.remove('hidden');
+      document.getElementById('most-detail-container')?.classList.add('hidden');
+      renderMostMembersOverview();
     }
 
     function renderAllViews() {
@@ -3146,7 +3384,7 @@ function resetMatchHistory() {
       if (tabKey === 'summoners') renderSummonersList();
       if (tabKey === 'history') renderMatchHistory();
       if (tabKey === 'replay') renderReplayArchiveList();
-      if (tabKey === 'most') renderMostStatsTable();
+      if (tabKey === 'most') { closeMostDetailView(); renderMostStatsTable(); }
       if (tabKey === 'community') { closePostDetailView(); renderCommunityBoard(); }
     }
 
