@@ -656,6 +656,22 @@
                 </button>
               </div>
             </div>
+
+            <!-- 🌟 1대안부터 4대안까지 한 화면에 동시 비교 및 원클릭 선택 카드 컨테이너 -->
+            <div id="alternatives-box" class="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-3">
+              <div class="flex items-center justify-between flex-wrap gap-2">
+                <div class="flex items-center gap-2">
+                  <span class="w-6 h-6 rounded-lg bg-amber-500/20 text-amber-500 flex items-center justify-center text-xs font-black">
+                    <i class="fa-solid fa-layer-group"></i>
+                  </span>
+                  <h3 class="font-black text-sm text-slate-800 dark:text-gray-100">스마트 밸런싱 비교 대안 (1대안 ~ 4대안)</h3>
+                  <span class="text-xs text-slate-400">카드를 클릭하면 해당 대진표가 메인 화면에 즉시 적용됩니다.</span>
+                </div>
+              </div>
+              <div id="alternatives-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <!-- 자바스크립트로 1~4대안 카드 4장 동시 렌더링 -->
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -670,34 +686,26 @@
             </div>
           </div>
 
-<!-- 참가 확정자 명단 (10인 슬롯) -->
-            <div>
-              <div class="flex items-center justify-between mb-2">
-                <h4 class="text-xs font-black text-slate-800 dark:text-gray-200 flex items-center gap-1.5">
-                  <i class="fa-solid fa-clipboard-user text-amber-500"></i> 참가 확정 인원 명단
-                </h4>
-              </div>
-              <div id="sched-roster-list" class="grid grid-cols-1 sm:grid-cols-2 gap-2 min-h-[140px]">
-                <!-- 자바스크립트로 참가자 칩 렌더링 -->
-              </div>
-            </div>
-
-            <!-- 🌟 참가 투표 및 변경 실시간 타임스탬프 로그 (시작 직전/지각자 확인) -->
-            <div class="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-2">
-              <div class="flex items-center justify-between">
-                <h4 class="text-xs font-black text-slate-800 dark:text-gray-200 flex items-center gap-1.5">
-                  <i class="fa-solid fa-clock-rotate-left text-amber-500"></i>
-                  <span>실시간 참가 투표 변동 로그 (타임스탬프)</span>
-                </h4>
-                <span class="text-[10px] text-slate-400">※ 시작 직전 변경 및 변동 확인용</span>
-              </div>
-              <div id="sched-vote-logs" class="max-h-36 overflow-y-auto space-y-1.5 p-2 rounded-xl bg-slate-50 dark:bg-[#161d2a] border border-slate-200 dark:border-slate-800 text-[11px]">
-                <div class="text-center text-slate-400 py-3 text-xs">최근 투표 변동 내역이 없습니다.</div>
-              </div>
-            </div>
+          <!-- 🌟 원클릭 정렬 툴바 (오름차순/내림차순 토글) -->
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <span class="text-xs text-slate-400 font-bold mr-1"><i class="fa-solid fa-arrow-down-wide-short text-amber-500 mr-1"></i>정렬:</span>
+            <button onclick="changeSummonerSort('mmr')" id="sort-btn-mmr" class="px-2.5 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-500 text-xs font-black transition flex items-center gap-1">
+              <span>MMR순</span> <span id="sort-icon-mmr">▼</span>
+            </button>
+            <button onclick="changeSummonerSort('tier')" id="sort-btn-tier" class="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-[#161d2a] border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-gray-300 text-xs font-bold transition flex items-center gap-1 hover:border-amber-400">
+              <span>티어순</span> <span id="sort-icon-tier"></span>
+            </button>
+            <button onclick="changeSummonerSort('games')" id="sort-btn-games" class="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-[#161d2a] border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-gray-300 text-xs font-bold transition flex items-center gap-1 hover:border-amber-400">
+              <span>판수순</span> <span id="sort-icon-games"></span>
+            </button>
+            <button onclick="changeSummonerSort('name')" id="sort-btn-name" class="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-[#161d2a] border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-gray-300 text-xs font-bold transition flex items-center gap-1 hover:border-amber-400">
+              <span>이름순</span> <span id="sort-icon-name"></span>
+            </button>
+            <button onclick="openAddSummonerModal()" class="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-600 to-yellow-500 text-gray-950 font-black text-xs shadow transition flex items-center gap-1 shrink-0 ml-1">
+              <i class="fa-solid fa-user-plus"></i> <span>멤버 추가</span>
+            </button>
           </div>
         </div>
-      </section>
 
         <!-- 🌟 가시성 높은 2열 컴팩트 리스트 뷰 -->
         <div id="summoners-card-container" class="grid grid-cols-1 lg:grid-cols-2 gap-3"></div>
@@ -2458,6 +2466,35 @@ let summonerSortKey = 'mmr';
     }
 
     // 🌟 컴팩트 가로 행(Row) 리스트 뷰 및 정렬 렌더러
+    let summonerSortKey = 'mmr';
+    let summonerSortAsc = false;
+
+    function changeSummonerSort(key) {
+      if (summonerSortKey === key) {
+        summonerSortAsc = !summonerSortAsc;
+      } else {
+        summonerSortKey = key;
+        summonerSortAsc = false;
+      }
+      updateSortButtonUI();
+      renderSummonersList();
+    }
+
+    function updateSortButtonUI() {
+      ['mmr', 'tier', 'games', 'name'].forEach(k => {
+        const btn = document.getElementById(`sort-btn-${k}`);
+        const icon = document.getElementById(`sort-icon-${k}`);
+        if (!btn || !icon) return;
+        if (k === summonerSortKey) {
+          btn.className = "px-2.5 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-500 text-xs font-black transition flex items-center gap-1";
+          icon.textContent = summonerSortAsc ? '▲' : '▼';
+        } else {
+          btn.className = "px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-[#161d2a] border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-gray-300 text-xs font-bold transition flex items-center gap-1 hover:border-amber-400";
+          icon.textContent = '';
+        }
+      });
+    }
+
     function renderSummonersList() {
       const container = document.getElementById('summoners-card-container');
       if (!container) return;
@@ -2469,7 +2506,6 @@ let summonerSortKey = 'mmr';
         (s.most && s.most.some(m => m.toLowerCase().includes(query)))
       );
 
-      // 정렬 처리
       list.sort((a, b) => {
         let valA, valB;
         if (summonerSortKey === 'mmr') {
@@ -3639,6 +3675,144 @@ function resetMatchHistory() {
       if (!scrimSchedules[dateKey]) {
         scrimSchedules[dateKey] = { time: '22:00', participants: [] };
       }
+
+    function renderScheduleBoard() {
+      const parts = selectedSchedDateKey.split('-');
+      const dObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+      const days = ['일', '월', '화', '수', '목', '금', '토'];
+      const dayName = days[dObj.getDay()];
+
+      const titleEl = document.getElementById('sched-selected-date-text');
+      if (titleEl) {
+        const isToday = (selectedSchedDateKey === getFormattedDateKey(new Date()));
+        titleEl.textContent = `${parts[0]}년 ${parseInt(parts[1])}월 ${parseInt(parts[2])}일 (${dayName}요일) ${isToday ? '★ 오늘' : ''}`;
+      }
+
+      const schedData = scrimSchedules[selectedSchedDateKey] || { time: '22:00', participants: [] };
+      const timeSelect = document.getElementById('sched-match-time');
+      if (timeSelect) timeSelect.value = schedData.time || '22:00';
+
+      const roster = schedData.participants || [];
+      const confirmed = roster.filter(p => p.status === 'JOIN');
+      const onHoldOrAbsent = roster.filter(p => p.status === 'HOLD' || p.status === 'ABSENT');
+      const count = confirmed.length;
+
+      const rosterCountEl = document.getElementById('sched-roster-count');
+      if (rosterCountEl) rosterCountEl.textContent = count;
+
+      const timeCounts = {};
+      confirmed.forEach(p => {
+        const t = p.availTime || '정시 가능';
+        timeCounts[t] = (timeCounts[t] || 0) + 1;
+      });
+      const summaryEl = document.getElementById('sched-avail-summary-text');
+      if (summaryEl) {
+        const summaryArr = Object.entries(timeCounts).map(([t, cnt]) => `${t} (${cnt}명)`);
+        summaryEl.textContent = summaryArr.length > 0 ? summaryArr.join(' · ') : '투표 대기 중';
+      }
+      const pct = Math.min(Math.round((count / 10) * 100), 100);
+      const progressBar = document.getElementById('sched-progress-bar');
+      if (progressBar) progressBar.style.width = `${pct}%`;
+
+      const badge = document.getElementById('sched-status-badge');
+      const banner = document.getElementById('sched-ready-banner');
+      if (count >= 10) {
+        if (badge) {
+          badge.className = "px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-500 font-extrabold text-[11px]";
+          badge.textContent = "🎉 10인 풀파티 완성 (대진 생성 가능)";
+        }
+        if (banner) banner.classList.remove('hidden');
+      } else {
+        if (badge) {
+          badge.className = "px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-500 font-bold text-[11px]";
+          badge.textContent = `${10 - count}명 추가 모집 중`;
+        }
+        if (banner) banner.classList.add('hidden');
+      }
+
+      const select = document.getElementById('sched-player-select');
+      if (select) {
+        const joinedPlayerIds = new Set(roster.map(p => p.id || summoners.find(s => isSameSummonerName(s.name, p.name))?.id).filter(Boolean));
+        const availableSummoners = summoners.filter(s => !joinedPlayerIds.has(s.id));
+        select.innerHTML = '<option value="">소환사 선택 (본인 이름)...</option>' + 
+          availableSummoners.map(s => `<option value="${s.id}">${s.name} ${s.description ? `(${s.description})` : ''} - ${s.tier}</option>`).join('');
+      }
+
+      const rosterListEl = document.getElementById('sched-roster-list');
+      if (rosterListEl) {
+        rosterListEl.innerHTML = '';
+        if (roster.length === 0) {
+          rosterListEl.innerHTML = `<div class="col-span-full py-8 text-center text-xs text-slate-400 bg-slate-50 dark:bg-[#161d2a] rounded-xl border border-dashed border-slate-300 dark:border-slate-800">아직 투표한 멤버가 없습니다. 아래에서 본인 이름을 골라 참가 또는 보류를 선택해 주세요!</div>`;
+        } else {
+          confirmed.forEach((p, idx) => {
+            const fullSummoner = summoners.find(s => s.id === p.id || s.name === p.name);
+            const chip = document.createElement('div');
+            chip.className = `p-2.5 rounded-xl border flex items-center justify-between text-xs gap-2 min-w-0 transition bg-amber-500/10 border-amber-500/40 text-slate-900 dark:text-gray-100`;
+            chip.innerHTML = `
+              <div class="flex items-center gap-2 min-w-0 flex-1">
+                <span class="w-5 h-5 rounded-md bg-amber-500 text-gray-950 font-black text-[10px] flex items-center justify-center shrink-0">
+                  ${idx + 1}
+                </span>
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-1.5">
+                    <span class="font-extrabold truncate">${p.name}</span>
+                    ${fullSummoner?.description ? `<span class="text-[10px] text-amber-500 font-bold shrink-0">(${fullSummoner.description})</span>` : ''}
+                  </div>
+                  <span class="text-[10px] text-slate-400 block">${fullSummoner?.tier || 'UNRANKED'}</span>
+                  ${p.reason ? `<span class="text-[10px] text-emerald-400 block mt-0.5 font-medium">💬 "${p.reason}"</span>` : ''}
+                </div>
+              </div>
+              <div class="flex items-center gap-1.5 shrink-0">
+                <span class="px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-[10px] font-black text-emerald-500 whitespace-nowrap">
+                  <i class="fa-solid fa-circle-check mr-1"></i>${p.availTime || '참가'}
+                </span>
+                <button onclick="removeRsvp('${p.id || p.name}')" class="text-slate-400 hover:text-rose-500 p-1 shrink-0" title="취소">
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+            `;
+            rosterListEl.appendChild(chip);
+          });
+
+          if (onHoldOrAbsent.length > 0) {
+            const holdHeader = document.createElement('div');
+            holdHeader.className = "col-span-full pt-3 pb-1 text-[11px] font-bold text-rose-500 dark:text-rose-400 flex items-center gap-1.5 border-t border-slate-200 dark:border-slate-800 mt-2";
+            holdHeader.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> <span>불참 및 보류 사유 명단 (${onHoldOrAbsent.length}명)</span>`;
+            rosterListEl.appendChild(holdHeader);
+
+            onHoldOrAbsent.forEach(p => {
+              const fullSummoner = summoners.find(s => s.id === p.id || s.name === p.name);
+              const isAbsent = (p.status === 'ABSENT');
+              const chip = document.createElement('div');
+              chip.className = `p-2.5 rounded-xl border flex items-center justify-between text-xs gap-2 min-w-0 transition ${
+                isAbsent ? 'bg-rose-500/10 border-rose-500/30 text-rose-300' : 'bg-slate-100 dark:bg-[#161d2a] border-slate-300 dark:border-slate-700 text-slate-600 dark:text-gray-300'
+              }`;
+              chip.innerHTML = `
+                <div class="flex items-center gap-2 min-w-0 flex-1">
+                  <span class="w-5 h-5 rounded-md ${isAbsent ? 'bg-rose-600 text-white' : 'bg-amber-500/30 text-amber-500'} font-bold text-[10px] flex items-center justify-center shrink-0">
+                    ${isAbsent ? '불참' : '보류'}
+                  </span>
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-1.5">
+                      <span class="font-bold truncate">${p.name}</span>
+                      ${fullSummoner?.description ? `<span class="text-[10px] text-slate-400 font-bold shrink-0">(${fullSummoner.description})</span>` : ''}
+                    </div>
+                    <span class="text-[11px] ${isAbsent ? 'text-rose-400' : 'text-amber-400'} block mt-0.5 font-bold">사유: "${p.reason || '사유 미작성'}"</span>
+                  </div>
+                </div>
+                <button onclick="removeRsvp('${p.id || p.name}')" class="text-slate-400 hover:text-rose-500 p-1 shrink-0" title="취소">
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+              `;
+              rosterListEl.appendChild(chip);
+            });
+          }
+        }
+      }
+
+      if (typeof renderVoteLogs === 'function') renderVoteLogs();
+    }
+    
       renderCalendar();
       renderScheduleBoard();
     }
