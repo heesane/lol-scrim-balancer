@@ -155,30 +155,15 @@
         <span id="nav-most-count" class="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 font-bold">0</span>
       </button>
 
-      <!-- 🌟 맨 밑 항목: 자유게시판 -->
+      <!-- 🌟 맨 밑 항목: 공지사항 (자유게시판 대체) -->
       <button id="nav-community" onclick="switchTab('community')" class="w-full px-3.5 py-2.5 rounded-xl transition flex items-center justify-between text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-gray-200 hover:bg-slate-100 dark:hover:bg-[#161d2a]">
         <div class="flex items-center gap-3">
-          <i class="fa-solid fa-comments w-4 text-center text-emerald-500"></i>
-          <span>자유게시판</span>
+          <i class="fa-solid fa-bullhorn w-4 text-center text-amber-500"></i>
+          <span>공지사항</span>
         </div>
-        <span id="nav-post-count" class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 font-bold">0</span>
+        <span id="nav-post-count" class="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 font-bold">0</span>
       </button>
     </nav>
-
-    <!-- 빠른 멤버 서랍 -->
-    <div class="px-3 py-2 border-t border-slate-200 dark:border-slate-800">
-      <button onclick="toggleSidebarMemberDrawer()" class="w-full py-2 px-3 rounded-xl bg-slate-100 dark:bg-[#161d2a] hover:bg-slate-200 dark:hover:bg-[#1c2435] text-xs font-bold text-slate-700 dark:text-gray-200 flex items-center justify-between transition">
-        <span class="flex items-center gap-2">
-          <i class="fa-solid fa-address-book text-amber-500"></i>
-          <span>빠른 멤버 서랍</span>
-        </span>
-        <i id="drawer-chevron-icon" class="fa-solid fa-chevron-down text-[10px] text-slate-400 transition-transform duration-200"></i>
-      </button>
-
-      <div id="sidebar-drawer-container" class="hidden mt-2 space-y-1 max-h-56 overflow-y-auto pr-1">
-        <div id="sidebar-drawer-list" class="space-y-1"></div>
-      </div>
-    </div>
 
     <div class="flex-1"></div>
 
@@ -496,10 +481,23 @@
                 <h4 class="text-xs font-black text-slate-800 dark:text-gray-200 flex items-center gap-1.5">
                   <i class="fa-solid fa-clipboard-user text-amber-500"></i> 참가 확정 인원 명단
                 </h4>
-<!-- 전체 영향 주는 명단 비우기 버튼 삭제됨 -->
               </div>
               <div id="sched-roster-list" class="grid grid-cols-1 sm:grid-cols-2 gap-2 min-h-[140px]">
                 <!-- 자바스크립트로 참가자 칩 렌더링 -->
+              </div>
+            </div>
+
+            <!-- 🌟 참가 투표 및 변경 실시간 타임스탬프 로그 (시작 30분 전/지각/상태 변경 추적) -->
+            <div class="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-2">
+              <div class="flex items-center justify-between">
+                <h4 class="text-xs font-black text-slate-800 dark:text-gray-200 flex items-center gap-1.5">
+                  <i class="fa-solid fa-clock-rotate-left text-amber-500"></i>
+                  <span>실시간 참가 투표 변동 로그 (타임스탬프)</span>
+                </h4>
+                <span class="text-[10px] text-slate-400">※ 시작 직전 변경 및 변동 확인용</span>
+              </div>
+              <div id="sched-vote-logs" class="max-h-36 overflow-y-auto space-y-1.5 p-2 rounded-xl bg-slate-50 dark:bg-[#161d2a] border border-slate-200 dark:border-slate-800 text-[11px]">
+                <div class="text-center text-slate-400 py-3 text-xs">최근 투표 변동 내역이 없습니다.</div>
               </div>
             </div>
 
@@ -613,11 +611,13 @@
                 </div>
               </div>
 
-              <div class="hidden lg:flex lg:col-span-1 flex-col items-center justify-center space-y-4 text-slate-400">
-                <div class="w-px h-20 bg-slate-200 dark:bg-slate-800"></div>
-                <div class="w-10 h-10 rounded-full bg-slate-100 dark:bg-[#161d2a] border border-amber-500/40 flex items-center justify-center text-amber-500 font-black text-xs shadow-md">VS</div>
-                <span class="text-[9px] text-slate-400 font-bold uppercase tracking-widest text-center">DRAG<br/>SWAP</span>
-                <div class="w-px h-20 bg-slate-200 dark:bg-slate-800"></div>
+               <!-- 🌟 중앙: 라인별 맞대결 유불리 부등호(>, >>, <<<) 및 실시간 격차 표시 -->
+              <div class="hidden lg:flex lg:col-span-1 flex-col items-center justify-between py-12 text-slate-400">
+                <div class="w-10 h-10 rounded-full bg-slate-100 dark:bg-[#161d2a] border border-amber-500/40 flex items-center justify-center text-amber-500 font-black text-xs shadow-md mb-2">VS</div>
+                <div id="lane-matchup-indicators" class="w-full space-y-7 text-center">
+                  <!-- 자바스크립트로 라인별 맞대결 부등호 렌더링 -->
+                </div>
+                <span class="text-[8px] text-slate-400 font-bold uppercase tracking-widest mt-2">DRAG<br/>SWAP</span>
               </div>
 
               <div class="lg:col-span-5 bg-white dark:bg-[#121721] border border-red-200 dark:border-red-900/40 rounded-2xl p-4 shadow-xl flex flex-col justify-between">
@@ -660,17 +660,39 @@
         </div>
       </section>
 
-      <!-- SECTION 2: 전체 멤버 목록 (SUMMONERS) -->
-      <section id="tab-content-summoners" class="hidden space-y-6">
+<!-- SECTION 2: 전체 멤버 목록 (SUMMONERS - 컴팩트 & 정렬 툴바 완비) -->
+      <section id="tab-content-summoners" class="hidden space-y-4">
         <div class="bg-white dark:bg-[#121721] border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-lg">
           <div class="flex items-center gap-3 flex-1 flex-wrap">
             <div class="relative flex-1 min-w-[200px]">
               <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
-              <input id="search-input" oninput="renderSummonersList()" type="text" placeholder="명단 내 소환사 검색..." class="w-full bg-slate-50 dark:bg-[#161d2a] border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs focus:outline-none focus:border-amber-500">
+              <input id="search-input" oninput="renderSummonersList()" type="text" placeholder="소환사명, 실명, 모스트 검색..." class="w-full bg-slate-50 dark:bg-[#161d2a] border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs focus:outline-none focus:border-amber-500">
             </div>
           </div>
+
+          <!-- 🌟 원클릭 정렬 툴바 (오름차순/내림차순 토글) -->
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <span class="text-xs text-slate-400 font-bold mr-1"><i class="fa-solid fa-arrow-down-wide-short text-amber-500 mr-1"></i>정렬:</span>
+            <button onclick="changeSummonerSort('mmr')" id="sort-btn-mmr" class="px-2.5 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-500 text-xs font-black transition flex items-center gap-1">
+              <span>MMR순</span> <span id="sort-icon-mmr">▼</span>
+            </button>
+            <button onclick="changeSummonerSort('tier')" id="sort-btn-tier" class="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-[#161d2a] border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-gray-300 text-xs font-bold transition flex items-center gap-1 hover:border-amber-400">
+              <span>티어순</span> <span id="sort-icon-tier"></span>
+            </button>
+            <button onclick="changeSummonerSort('games')" id="sort-btn-games" class="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-[#161d2a] border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-gray-300 text-xs font-bold transition flex items-center gap-1 hover:border-amber-400">
+              <span>판수순</span> <span id="sort-icon-games"></span>
+            </button>
+            <button onclick="changeSummonerSort('name')" id="sort-btn-name" class="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-[#161d2a] border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-gray-300 text-xs font-bold transition flex items-center gap-1 hover:border-amber-400">
+              <span>이름순</span> <span id="sort-icon-name"></span>
+            </button>
+            <button onclick="openAddSummonerModal()" class="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-600 to-yellow-500 text-gray-950 font-black text-xs shadow transition flex items-center gap-1 shrink-0 ml-1">
+              <i class="fa-solid fa-user-plus"></i> <span>멤버 추가</span>
+            </button>
+          </div>
         </div>
-        <div id="summoners-card-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+
+        <!-- 🌟 가시성 높은 2열 컴팩트 리스트 뷰 -->
+        <div id="summoners-card-container" class="grid grid-cols-1 lg:grid-cols-2 gap-3"></div>
       </section>
 
       <!-- SECTION 3: 매치 히스토리 (HISTORY - DEEPLOL 스코어보드 스타일) -->
