@@ -4453,9 +4453,9 @@ function submitRsvpVote(voteType) {
           content: {
             title: `⚔️ [롤 내전 매치 생성] ${selectedSchedDateKey} (${timeStr})`,
             description: `지금 링크를 눌러 참가 투표 및 보류/불참 사유를 적어주세요!`,
-            imageUrl: 'https://images.contentstack.io/v3/assets/blt731acb42bb3d1659/blt7695ff59779262b9/5db05fa9242f426df12c0190/RiotX_ChampionClash_banner.jpg',
-            imageWidth: 800,
-            imageHeight: 450,
+            imageUrl: (window.location.origin && window.location.origin.startsWith('http') ? window.location.origin : 'https://lol-scrim-balancer.vercel.app') + '/scrim_banner.png',
+            imageWidth: 600,
+            imageHeight: 600,
             link: {
               mobileWebUrl: webUrl,
               webUrl: webUrl,
