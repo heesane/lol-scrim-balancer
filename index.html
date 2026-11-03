@@ -4435,6 +4435,7 @@ function submitRsvpVote(voteType) {
     }
 
     // 🌟 단톡방 카카오톡 피드 카드 공유 함수
+    // 🌟 단톡방 카카오톡 피드 카드 공유 함수
     function shareScrimToKakao() {
       if (!window.Kakao) {
         showToast('카카오 SDK 로드 실패', 'error');
@@ -4443,8 +4444,6 @@ function submitRsvpVote(voteType) {
       initKakaoSDK();
 
       const sched = (typeof scrimSchedules !== 'undefined' && scrimSchedules[selectedSchedDateKey]) || { time: '22:00', participants: [] };
-      const confirmed = (sched.participants || []).filter(p => p.status === 'JOIN');
-      const count = confirmed.length;
       const timeStr = sched.time || '22:00';
       const webUrl = window.location.origin + window.location.pathname;
 
@@ -4453,9 +4452,10 @@ function submitRsvpVote(voteType) {
           objectType: 'feed',
           content: {
             title: `⚔️ [롤 내전 매치 생성] ${selectedSchedDateKey} (${timeStr})`,
-            description: `현재 참가 확정 인원: ${count} / 10명 (${10 - count > 0 ? (10 - count) + '명 모집 중!' : '풀파티 완성!'})
-지금 링크를 눌러 참가 투표와 밸런싱에 참여하세요!`,
-            imageUrl: 'https://ddragon.leagueoflegends.com/cdn/img/champion/splash/SummonersRift_0.jpg',
+            description: `지금 링크를 눌러 참가 투표 및 보류/불참 사유를 적어주세요!`,
+            imageUrl: 'https://images.contentstack.io/v3/assets/blt731acb42bb3d1659/blt7695ff59779262b9/5db05fa9242f426df12c0190/RiotX_ChampionClash_banner.jpg',
+            imageWidth: 800,
+            imageHeight: 450,
             link: {
               mobileWebUrl: webUrl,
               webUrl: webUrl,
@@ -4474,12 +4474,9 @@ function submitRsvpVote(voteType) {
       } catch (err) {
         console.error(err);
         // Fallback: 클립보드 복사
-        const copyMsg = `[⚔️ 롤 내전 매치 생성!]
-일정: ${selectedSchedDateKey} (${timeStr})
-현재 확정: ${count} / 10명
-참가 투표하기: ${webUrl}`;
+        const copyMsg = `[⚔️ 롤 내전 매치 생성!]\n일정: ${selectedSchedDateKey} (${timeStr})\n지금 링크를 눌러 참가 투표 및 보류/불참 사유를 적어주세요!\n👉 ${webUrl}`;
         navigator.clipboard.writeText(copyMsg).then(() => {
-          showToast('카톡 공유창 열기 실패 - 대신 단톡방용 안내 문구가 복사되었습니다!', 'info');
+          showToast('단톡방용 안내 문구 및 링크가 복사되었습니다!', 'info');
         });
       }
     }
