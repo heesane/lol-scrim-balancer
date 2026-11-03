@@ -65,6 +65,8 @@
     .tier-iron { background: rgba(100, 116, 139, 0.15); color: #334155; border: 1px solid rgba(100, 116, 139, 0.4); }
     .dark .tier-iron { color: #94a3b8; }
   </style>
+  <!-- 카카오톡 공식 공유 SDK -->
+  <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js"></script>
 </head>
 <body class="min-h-screen flex flex-col md:flex-row antialiased bg-slate-100 text-slate-800 dark:bg-[#0b0e14] dark:text-slate-200 transition-colors duration-200 overflow-x-hidden">
 
@@ -295,6 +297,14 @@
                   </h2>
                 </div>
                 <p class="text-xs text-slate-500 dark:text-gray-400 mt-1">오늘 경기 참석 여부를 투표하고 시작 시간을 확정하세요!</p>
+              </div>
+              
+              <!-- 🌟 카카오톡 단톡방 공유 버튼 -->
+              <div class="flex items-center gap-2">
+                <button onclick="shareScrimToKakao()" class="px-3.5 py-2 rounded-xl bg-[#FEE500] hover:brightness-95 text-[#191919] font-black text-xs shadow-md transition flex items-center gap-2 border border-[#E6CE00] shrink-0" title="카카오톡 단톡방으로 내전 초대장 전송">
+                  <i class="fa-solid fa-comment text-sm"></i>
+                  <span>카톡 단톡방 공유</span>
+                </button>
               </div>
 
               <!-- 시작 시간 설정 인풋 -->
@@ -3551,9 +3561,21 @@ function submitRsvpVote(voteType) {
 
       if (voteType === 'JOIN') {
         const itemData = { id: p.id, name: p.name, status: 'JOIN', availTime: availTime, reason: reasonText };
+        const prevJoins = sched.participants.filter(item => item.status === 'JOIN').length;
         if (existingIdx >= 0) sched.participants[existingIdx] = itemData;
         else sched.participants.push(itemData);
+        
+        const nowJoins = sched.participants.filter(item => item.status === 'JOIN').length;
         showToast(`[${p.name}] 참가 확정! (${availTime})`, 'success');
+        
+        // 🌟 1명이 먼저 참가를 눌러 내전이 최초 생성되었을 때 단톡방 공유 유도
+        if (prevJoins === 0 && nowJoins === 1) {
+          setTimeout(() => {
+            if (confirm(`🎉 [${selectedSchedDateKey}] 내전의 첫 번째 참가가 등록되었습니다!\n카카오톡 단톡방에 내전 초대 카드를 바로 공유하시겠습니까?`)) {
+              shareScrimToKakao();
+            }
+          }, 300);
+        }
       } else if (voteType === 'HOLD') {
         const itemData = { id: p.id, name: p.name, status: 'HOLD', availTime: availTime, reason: reasonText };
         if (existingIdx >= 0) sched.participants[existingIdx] = itemData;
@@ -3736,9 +3758,21 @@ function submitRsvpVote(voteType) {
 
       if (voteType === 'JOIN') {
         const itemData = { id: p.id, name: p.name, status: 'JOIN', availTime: availTime, reason: reasonText };
+        const prevJoins = sched.participants.filter(item => item.status === 'JOIN').length;
         if (existingIdx >= 0) sched.participants[existingIdx] = itemData;
         else sched.participants.push(itemData);
+        
+        const nowJoins = sched.participants.filter(item => item.status === 'JOIN').length;
         showToast(`[${p.name}] 참가 확정! (${availTime})`, 'success');
+        
+        // 🌟 1명이 먼저 참가를 눌러 내전이 최초 생성되었을 때 단톡방 공유 유도
+        if (prevJoins === 0 && nowJoins === 1) {
+          setTimeout(() => {
+            if (confirm(`🎉 [${selectedSchedDateKey}] 내전의 첫 번째 참가가 등록되었습니다!\n카카오톡 단톡방에 내전 초대 카드를 바로 공유하시겠습니까?`)) {
+              shareScrimToKakao();
+            }
+          }, 300);
+        }
       } else if (voteType === 'HOLD') {
         const itemData = { id: p.id, name: p.name, status: 'HOLD', availTime: availTime, reason: reasonText };
         if (existingIdx >= 0) sched.participants[existingIdx] = itemData;
@@ -4386,10 +4420,75 @@ function submitRsvpVote(voteType) {
     }
 
 
+    
+    // 🌟 카카오톡 공유 SDK 공식 연동 (JavaScript 키 등록)
+    const KAKAO_JS_KEY = '66b6d96c07dc863f1e4d33495f923b91';
+    function initKakaoSDK() {
+      try {
+        if (window.Kakao && !window.Kakao.isInitialized()) {
+          window.Kakao.init(KAKAO_JS_KEY);
+          console.log("🟡 [카카오톡 SDK] 초기화 완료:", window.Kakao.isInitialized());
+        }
+      } catch (err) {
+        console.warn("Kakao init error:", err);
+      }
+    }
+
+    // 🌟 단톡방 카카오톡 피드 카드 공유 함수
+    function shareScrimToKakao() {
+      if (!window.Kakao) {
+        showToast('카카오 SDK 로드 실패', 'error');
+        return;
+      }
+      initKakaoSDK();
+
+      const sched = (typeof scrimSchedules !== 'undefined' && scrimSchedules[selectedSchedDateKey]) || { time: '22:00', participants: [] };
+      const confirmed = (sched.participants || []).filter(p => p.status === 'JOIN');
+      const count = confirmed.length;
+      const timeStr = sched.time || '22:00';
+      const webUrl = window.location.origin + window.location.pathname;
+
+      try {
+        window.Kakao.Share.sendDefault({
+          objectType: 'feed',
+          content: {
+            title: `⚔️ [롤 내전 매치 생성] ${selectedSchedDateKey} (${timeStr})`,
+            description: `현재 참가 확정 인원: ${count} / 10명 (${10 - count > 0 ? (10 - count) + '명 모집 중!' : '풀파티 완성!'})
+지금 링크를 눌러 참가 투표와 밸런싱에 참여하세요!`,
+            imageUrl: 'https://ddragon.leagueoflegends.com/cdn/img/champion/splash/SummonersRift_0.jpg',
+            link: {
+              mobileWebUrl: webUrl,
+              webUrl: webUrl,
+            },
+          },
+          buttons: [
+            {
+              title: '내전 참가 투표하러 가기 🎮',
+              link: {
+                mobileWebUrl: webUrl,
+                webUrl: webUrl,
+              },
+            },
+          ],
+        });
+      } catch (err) {
+        console.error(err);
+        // Fallback: 클립보드 복사
+        const copyMsg = `[⚔️ 롤 내전 매치 생성!]
+일정: ${selectedSchedDateKey} (${timeStr})
+현재 확정: ${count} / 10명
+참가 투표하기: ${webUrl}`;
+        navigator.clipboard.writeText(copyMsg).then(() => {
+          showToast('카톡 공유창 열기 실패 - 대신 단톡방용 안내 문구가 복사되었습니다!', 'info');
+        });
+      }
+    }
+
     window.addEventListener('DOMContentLoaded', () => {
       initTheme();
       updateAdminButtonUI();
       initData();
+      initKakaoSDK();
     });
   </script>
 
