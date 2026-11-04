@@ -2481,6 +2481,59 @@ function runSmartBalancing() {
         else if (prefs[2] === role) roleFitBadge = '<span class="text-[9px] px-1 rounded bg-amber-500/10 text-amber-500 font-bold">3지망</span>';
         else if (prefs[3] === role) roleFitBadge = '<span class="text-[9px] px-1 rounded bg-purple-500/10 text-purple-400 font-bold">4지망</span>';
 
+// 🌟 배정된 라인(role)에 맞는 실전 모스트 챔피언 추출 및 한글 이름 노출
+        const targetRoleChamps = CHAMPION_ROLES[role] || [];
+        const rolePlayedMap = {};
+
+        // 1. 내전 기록에서 해당 라인(또는 해당 라인 분류 챔피언) 플레이 기록 카운트
+        if (Array.isArray(matchHistory)) {
+          matchHistory.forEach(m => {
+            const inMatch = [...(m.blue || []), ...(m.red || [])].find(p => isSameSummonerName(p.name, player.name));
+            if (inMatch) {
+              const playedC = inMatch.champion || inMatch.most;
+              const playedR = (inMatch.role || '').toUpperCase();
+              if (playedC && (playedR === role || targetRoleChamps.includes(playedC))) {
+                rolePlayedMap[playedC] = (rolePlayedMap[playedC] || 0) + 1;
+              }
+            }
+          });
+        }
+
+        let assignedMostList = Object.entries(rolePlayedMap)
+          .sort((a, b) => b[1] - a[1])
+          .map(e => e[0]);
+
+        // 2. 내전 기록이 부족하면 소환사 등록 모스트(s.most) 중 해당 라인 챔피언으로 우선 보충
+        const fullSummoner = summoners.find(s => isSameSummonerName(s.name, player.name));
+        const regMost = (player.most && player.most.length > 0) ? player.most : (fullSummoner?.most || []);
+
+        regMost.forEach(c => {
+          if (assignedMostList.length < 3 && targetRoleChamps.includes(c) && !assignedMostList.includes(c)) {
+            assignedMostList.push(c);
+          }
+        });
+
+        // 3. 그래도 비어있다면 전체 등록 모스트에서 순서대로 보충
+        regMost.forEach(c => {
+          if (assignedMostList.length < 3 && !assignedMostList.includes(c)) {
+            assignedMostList.push(c);
+          }
+        });
+
+        // 4. 모스트 챔피언 아이콘 + 이름 뱃지 HTML 생성 (액박 방지 Fallback 적용)
+        const roleMostBadgesHtml = assignedMostList.slice(0, 3).map(c => {
+          const cKo = getChampionKoName(c);
+          const cIcon = getChampionIconUrl(cKo);
+          const cEn = CHAMPION_NAME_KO_TO_EN[cKo] || cKo;
+          return `
+            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-200/70 dark:bg-[#121721] border border-slate-300 dark:border-slate-700/80 text-[10px] font-bold text-slate-800 dark:text-gray-200 shrink-0 shadow-sm" title="${role} 모스트: ${cKo}">
+              <img src="${cIcon}" alt="${cKo}" class="w-4 h-4 rounded-full object-cover shrink-0 border border-slate-600/40"
+                   onerror="this.onerror=null; this.src='https://opgg-static.akamaized.net/meta/images/lol/latest/champion/${cEn}.png';">
+              <span>${cKo}</span>
+            </span>
+          `;
+        }).join('');
+
         const card = document.createElement('div');
         card.setAttribute('draggable', 'true');
         card.ondragstart = (e) => handleDragStartLane(e, teamColor, idx);
@@ -2502,20 +2555,10 @@ function runSmartBalancing() {
                 <span class="font-bold truncate text-slate-800 dark:text-gray-100">${player.name}</span>
                 <span class="tier-badge tier-${(player.tier||'unranked').toLowerCase()}">${player.tier}</span>
                 ${roleFitBadge}
-                <!-- 🌟 모스트 챔피언 원형 아이콘 (3개) -->
-                ${(() => {
-                  const sObj = summoners.find(s => isSameSummonerName(s.name, player.name));
-                  const mList = (player.most && player.most.length > 0) ? player.most.slice(0, 3) : (sObj?.most && sObj.most.length > 0 ? sObj.most.slice(0, 3) : []);
-                  if (!mList.length) return '';
-                  return `<div class="flex items-center gap-1 ml-1">` + mList.map(c => {
-                    const cKo = getChampionKoName(c);
-                    const cIcon = getChampionIconUrl(cKo);
-                    const cEn = CHAMPION_NAME_KO_TO_EN[cKo] || cKo;
-                    return `<div class="w-5 h-5 rounded-full overflow-hidden border border-slate-600/60 bg-slate-800 shrink-0 shadow-sm" title="모스트: ${cKo}">` +
-                      (cIcon ? `<img src="${cIcon}" alt="${cKo}" class="w-full h-full object-cover" onerror="this.onerror=null; this.src='https://opgg-static.akamaized.net/meta/images/lol/latest/champion/${cEn}.png';">` : `<span class="text-[8px] font-black text-amber-400 flex items-center justify-center h-full">${cKo.slice(0,1)}</span>`) +
-                    `</div>`;
-                  }).join('') + `</div>`;
-                })()}
+                <!-- 🌟 배정된 라인 전용 모스트 챔피언 아이콘 + 이름 뱃지 -->
+                <div class="flex items-center gap-1 ml-1 flex-wrap">
+                  ${roleMostBadgesHtml}
+                </div>
               </div>
               <div class="text-[10px] text-slate-400">
                 라인 체급 <strong class="text-amber-500 font-bold">${pMMR}pt</strong>${pMMR !== baseMMR ? ` <span class="text-[9px] text-slate-500">(기본 ${baseMMR}p)</span>` : ''}
@@ -2535,8 +2578,6 @@ function runSmartBalancing() {
           </div>
         `;
         container.appendChild(card);
-      });
-    }
 
     function handleDragStartLane(e, team, idx) {
       draggedLaneData = { team, idx };
