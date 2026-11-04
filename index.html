@@ -2480,6 +2480,7 @@ function runSmartBalancing() {
         else if (prefs[1] === role) roleFitBadge = '<span class="text-[9px] px-1 rounded bg-sky-500/10 text-sky-500 font-bold">2지망</span>';
         else if (prefs[2] === role) roleFitBadge = '<span class="text-[9px] px-1 rounded bg-amber-500/10 text-amber-500 font-bold">3지망</span>';
         else if (prefs[3] === role) roleFitBadge = '<span class="text-[9px] px-1 rounded bg-purple-500/10 text-purple-400 font-bold">4지망</span>';
+        
 
 // 🌟 배정된 라인(role)에 맞는 실전 모스트 챔피언 추출 및 한글 이름 노출
         const targetRoleChamps = CHAMPION_ROLES[role] || [];
@@ -2533,6 +2534,7 @@ function runSmartBalancing() {
             </span>
           `;
         }).join('');
+      }
 
         const card = document.createElement('div');
         card.setAttribute('draggable', 'true');
