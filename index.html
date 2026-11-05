@@ -1127,20 +1127,7 @@
     };
 
     const ORDERED_ROLES = ['TOP', 'JUG', 'MID', 'ADC', 'SUP'];
-
     
-    
-    // 🌟 소환사명 오탈자 및 별칭 완벽 정규화 헬퍼 (입/임, 희/화, 핵/펙 자동 매핑)
-    
-// 🌟 168개 챔피언 공식 한/영 매핑 딕셔너리
-    const CHAMPION_NAME_KO_TO_EN = {
-      '가렌':'Garen','멜':'Mel','유나라':'Yunara','갈리오':'Galio','갱플랭크':'Gangplank','그라가스':'Gragas','그레이브즈':'Graves','그웬':'Gwen','나르':'Gnar','나미':'Nami','나서스':'Nasus','나피리':'Naafiri','노틸러스':'Nautilus','녹턴':'Nocturne','누누와 윌럼프':'Nunu','니달리':'Nidalee','니코':'Neeko','닐라':'Nilah','다리우스':'Darius','다이애나':'Diana','드레이븐':'Draven','라이즈':'Ryze','라칸':'Rakan','람머스':'Rammus','럭스':'Lux','럼블':'Rumble','레넥톤':'Renekton','레오나':'Leona','레이븐':'Raven','렐':'Rell','레나타 글라스크':'Renata','렝가':'Rengar','루시안':'Lucian','룰루':'Lulu','르블랑':'Leblanc','리 신':'LeeSin','리븐':'Riven','리산드라':'Lissandra','릴리아':'Lillia','마스터 이':'MasterYi','마오카이':'Maokai','말자하':'Malzahar','말파이트':'Malphite','모데카이저':'Mordekaiser','모르가나':'Morgana','문도 박사':'DrMundo','미스 포츈':'MissFortune','밀리오':'Milio','바드':'Bard','바루스':'Varus','바이':'Vi','베이가':'Veigar','베인':'Vayne','벡스':'Vex','벨베스':'Belveth','벨코즈':'Velkoz','볼리베어':'Volibear','브라움':'Braum','브라이어':'Briar','브랜드':'Brand','블라디미르':'Vladimir','블리츠크랭크':'Blitzcrank','빅토르':'Viktor','뽀삐':'Poppy','사미라':'Samira','사이온':'Sion','사일러스':'Sylas','샤코':'Shaco','세나':'Senna','세라핀':'Seraphine','세주아니':'Sejuani','세트':'Sett','소나':'Sona','소라카':'Soraka','쉔':'Shen','쉬바나':'Shyvana','스몰더':'Smolder','스웨인':'Swain','스카너':'Skarner','시비르':'Sivir','신 짜오':'XinZhao','신드라':'Syndra','신지드':'Singed','쓰레쉬':'Thresh','아리':'Ahri','아무무':'Amumu','아우렐리온 솔':'AurelionSol','아이번':'Ivern','아지르':'Azir','아칼리':'Akali','아크샨':'Akshan','아트록스':'Aatrox','아펠리오스':'Aphelios','알리스타':'Alistar','암베사':'Ambessa','야스오':'Yasuo','에코':'Ekko','엘리스':'Elise','오공':'MonkeyKing','오로라':'Aurora','오른':'Ornn','오리아나':'Orianna','올라프':'Olaf','요네':'Yone','요릭':'Yorick','우디르':'Udyr','우르곳':'Urgot','워윅':'Warwick','유미':'Yuumi','이렐리아':'Irelia','이즈리얼':'Ezreal','일라오이':'Illaoi','자르반 4세':'JarvanIV','자야':'Xayah','자이라':'Zyra','자크':'Zac','잔나':'Janna','잭스':'Jax','제드':'Zed','제라스':'Xerath','제리':'Zeri','제이스':'Jayce','조이':'Zoe','직스':'Ziggs','진':'Jhin','질리언':'Zilean','징크스':'Jinx','초가스':'Chogath','카르마':'Karma','카밀':'Camille','카사딘':'Kassadin','카시오페아':'Cassiopeia','카이사':'Kaisa','카직스':'Khazix','카타리나':'Katarina','칼리스타':'Kalista','케넨':'Kennen','케이틀린':'Caitlyn','케인':'Kayn','케일':'Kayle','코그모':'KogMaw','코르키':'Corki','클레드':'Kled','키아나':'Qiyana','타릭':'Taric','탈론':'Talon','탈리야':'Taliyah','탐 켄치':'TahmKench','트런들':'Trundle','트리스타나':'Tristana','트린다미어':'Tryndamere','트위스티드 페이트':'TwistedFate','트위치':'Twitch','티모':'Teemo','파이크':'Pyke','판테온':'Pantheon','피들스틱':'Fiddlesticks','피오라':'Fiora','피즈':'Fizz','하이머딩거':'Heimerdinger','헤카림':'Hecarim'
-    };
-
-    const CHAMPION_NAME_EN_TO_KO = Object.entries(CHAMPION_NAME_KO_TO_EN).reduce((acc, [ko, en]) => {
-      acc[en.toLowerCase()] = ko;
-      return acc;
-    }, {});
 
 // 🌟 168개 챔피언 공식 한/영 딕셔너리 (크산테, 멜, 유나라 완비)
     const CHAMPION_NAME_KO_TO_EN = {
@@ -2071,17 +2058,52 @@ function getRoleSpecificMMR(player, assignedRole) {
       document.getElementById('modal-summoner').classList.remove('hidden');
     }
 
-    function renderSelectionGrid() {
+function renderSelectionGrid() {
       const grid = document.getElementById('balancer-selection-grid');
       if (!grid) return;
       grid.innerHTML = '';
       document.getElementById('nav-roster-count').textContent = summoners.length;
 
-      // 🌟 [핵심] 10명 초과 선택(19/10명 등) 발생 시 즉시 10명으로 잘라내어 정규화
+      // 10명 초과 방지 정규화
       if (selectedPlayerIds.size > 10) {
         selectedPlayerIds = new Set(Array.from(selectedPlayerIds).slice(0, 10));
         saveLocalData();
       }
+
+      summoners.forEach(s => {
+        const isSel = selectedPlayerIds.has(s.id);
+        const mmrData = getPlayerMMR(s);
+        const mainR = ROLE_METADATA[s.mainRole] || ROLE_METADATA.FILL;
+
+        const tile = document.createElement('div');
+        tile.setAttribute('draggable', 'true');
+        tile.ondragstart = (e) => {
+          e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'pool', playerId: s.id }));
+        };
+
+        tile.className = `p-2 rounded-xl border text-xs transition select-none flex items-center justify-between gap-1.5 cursor-grab active:cursor-grabbing hover:border-amber-400 ${
+          isSel ? 'bg-amber-500/10 border-amber-500 font-bold ring-1 ring-amber-500/30' : 'bg-slate-50 dark:bg-[#161d2a] border-slate-200 dark:border-slate-800'
+        }`;
+
+        tile.innerHTML = `
+          <div onclick="toggleSelectPlayer('${s.id}')" class="flex items-center gap-1.5 truncate flex-1 cursor-pointer">
+            <span class="${mainR.color}" title="1순위:${s.rolePrefs?.[0] || s.mainRole} / 2순위:${s.rolePrefs?.[1] || s.subRole}"><i class="fa-solid ${mainR.icon}"></i></span>
+            <span class="truncate text-slate-800 dark:text-gray-200">${s.name}</span>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <span class="text-[10px] text-slate-400">${mmrData.mmr}p</span>
+            <button onclick="event.stopPropagation(); removePlayerFromSelection('${s.id}')" title="제외" class="text-slate-400 hover:text-rose-500 p-0.5">
+              <i class="fa-solid fa-circle-xmark text-xs"></i>
+            </button>
+          </div>
+        `;
+        grid.appendChild(tile);
+      });
+
+      const count = selectedPlayerIds.size;
+      document.getElementById('selected-badge').textContent = `${count} / 10명 선택됨`;
+      document.getElementById('btn-run-balancing').disabled = (count !== 10);
+    }
 
       summoners.forEach(s => {
         const isSel = selectedPlayerIds.has(s.id);
@@ -2113,26 +2135,118 @@ function getRoleSpecificMMR(player, assignedRole) {
       document.getElementById('btn-run-balancing').disabled = (count !== 10);
     }
 
+// 🌟 [핵심] 대진표(currentMatch) 상태를 기준으로 상단 선택(selectedPlayerIds)을 100% 실시간 동기화
+    function syncSelectedFromCurrentMatch() {
+      if (!currentMatch) return;
+      const activeIds = [];
+      ['blue', 'red'].forEach(team => {
+        if (Array.isArray(currentMatch[team])) {
+          currentMatch[team].forEach(p => {
+            if (p && p.id) activeIds.push(p.id);
+          });
+        }
+      });
+      selectedPlayerIds = new Set(activeIds);
+      saveLocalData();
+      renderSelectionGrid();
+    }
+
+// 🌟 상단 타일 클릭 시: 빈 슬롯이 있으면 즉시 넣고, 이미 대진표에 있으면 뺌
     function toggleSelectPlayer(id) {
+      const playerObj = summoners.find(s => s.id === id);
+      if (!playerObj) return;
+
       if (selectedPlayerIds.has(id)) {
-        selectedPlayerIds.delete(id);
+        if (currentMatch) {
+          ['blue', 'red'].forEach(t => {
+            currentMatch[t].forEach((p, idx) => {
+              if (p && p.id === id) currentMatch[t][idx] = null;
+            });
+          });
+          recalculateMatchMMR();
+          syncSelectedFromCurrentMatch();
+          showToast(`[${playerObj.name}] 선수가 대진에서 제외되었습니다.`, 'info');
+        } else {
+          selectedPlayerIds.delete(id);
+          saveLocalData();
+          renderSelectionGrid();
+        }
+        return;
+      }
+
+      if (currentMatch) {
+        let filled = false;
+        for (let team of ['blue', 'red']) {
+          for (let i = 0; i < 5; i++) {
+            if (currentMatch[team][i] === null) {
+              currentMatch[team][i] = playerObj;
+              filled = true;
+              break;
+            }
+          }
+          if (filled) break;
+        }
+
+        if (filled) {
+          recalculateMatchMMR();
+          syncSelectedFromCurrentMatch();
+          showToast(`[${playerObj.name}] 선수가 빈자리에 배정되었습니다!`, 'success');
+        } else {
+          showToast('대진표 10명이 모두 차 있습니다. 교체할 선수의 [X]를 먼저 눌러주세요.', 'error');
+        }
       } else {
         if (selectedPlayerIds.size >= 10) {
-          showToast('최대 10명까지만 선택할 수 있습니다. (다른 멤버를 먼저 해제하세요)', 'error');
+          showToast('최대 10명까지만 선택할 수 있습니다.', 'error');
           return;
         }
         selectedPlayerIds.add(id);
+        saveLocalData();
+        renderSelectionGrid();
       }
-      saveLocalData();
-      renderSelectionGrid();
-      renderSidebarDrawerList();
     }
 
+    // 🌟 [교체] 상단 타일의 작은 [X] 버튼을 눌렀을 때도 동일하게 처리
+    // 상단 타일 [X] 버튼 클릭 시
     function removePlayerFromSelection(id) {
-      selectedPlayerIds.delete(id);
-      saveLocalData();
-      renderSelectionGrid();
-      renderSidebarDrawerList();
+      toggleSelectPlayer(id);
+    }
+
+    // 🌟 대진표 카드 내부의 [X] 버튼 클릭 시 (해당 자리만 비우고 상단 선택도 해제)
+    function removePlayerFromTeam(teamColor, idx) {
+      if (!currentMatch) return;
+      const removedPlayer = currentMatch[teamColor][idx];
+      if (!removedPlayer) return;
+
+      currentMatch[teamColor][idx] = null;
+
+      recalculateMatchMMR();
+      syncSelectedFromCurrentMatch(); // 🌟 상단 선택 상태 즉시 동기화
+      showToast(`[${removedPlayer.name}] 선수가 제외되었습니다. 빈자리에 다른 선수를 드래그하거나 클릭하세요.`, 'info');
+    }
+
+    // 빈 슬롯 유무 확인 헬퍼
+    function hasEmptySlotInMatch() {
+      if (!currentMatch) return false;
+      return currentMatch.blue.some(p => p === null) || currentMatch.red.some(p => p === null);
+    }
+
+    // 빈 자리에 새 선수를 쏙 집어넣는 함수
+    function fillEmptySlotWithPlayer(player) {
+      let filled = false;
+      for (let team of ['blue', 'red']) {
+        for (let i = 0; i < 5; i++) {
+          if (currentMatch[team][i] === null) {
+            currentMatch[team][i] = player;
+            filled = true;
+            break;
+          }
+        }
+        if (filled) break;
+      }
+      recalculateMatchMMR();
+      if (filled) {
+        showToast(`[${player.name}] 선수가 빈자리에 배정되었습니다!`, 'success');
+      }
     }
 
     function clearSelection() {
@@ -2387,14 +2501,18 @@ function runSmartBalancing() {
       showToast('대진표가 초기화되었습니다.', 'info');
     }
 
-    function removePlayerFromTeam(teamColor, idx) {
+      function removePlayerFromTeam(teamColor, idx) {
       if (!currentMatch) return;
       const removedPlayer = currentMatch[teamColor][idx];
-      selectedPlayerIds.delete(removedPlayer.id);
-      clearMatchTeams();
-      renderSelectionGrid();
-      renderSidebarDrawerList();
-      showToast(`[${removedPlayer.name}] 선수를 대진에서 제외했습니다.`, 'info');
+      if (!removedPlayer) return;
+
+      // 해당 라인을 빈 슬롯(null)으로 전환
+      currentMatch[teamColor][idx] = null;
+
+      recalculateMatchMMR();
+      // 🌟 상단 선택 목록에서도 즉시 해제하여 완벽 동기화
+      syncSelectedFromCurrentMatch();
+      showToast(`[${removedPlayer.name}] 선수가 제외되었습니다. 빈자리에 다른 선수를 드래그하거나 클릭하세요.`, 'info');
     }
 
         
@@ -2455,11 +2573,17 @@ function runSmartBalancing() {
       showToast(`${targetPos} 라인이 맞교체되었습니다.`, 'info');
     }
 
-    function recalculateMatchMMR() {
-      const blueSum = currentMatch.blue.reduce((acc, p, i) => acc + getRoleSpecificMMR(p, ORDERED_ROLES[i]), 0);
-      const redSum = currentMatch.red.reduce((acc, p, i) => acc + getRoleSpecificMMR(p, ORDERED_ROLES[i]), 0);
-      currentMatch.blueAvg = Math.round(blueSum / 5);
-      currentMatch.redAvg = Math.round(redSum / 5);
+      function recalculateMatchMMR() {
+      if (!currentMatch) return;
+
+      const validBlue = currentMatch.blue.filter(Boolean);
+      const validRed = currentMatch.red.filter(Boolean);
+
+      const blueSum = currentMatch.blue.reduce((acc, p, i) => acc + (p ? getRoleSpecificMMR(p, ORDERED_ROLES[i]) : 0), 0);
+      const redSum = currentMatch.red.reduce((acc, p, i) => acc + (p ? getRoleSpecificMMR(p, ORDERED_ROLES[i]) : 0), 0);
+
+      currentMatch.blueAvg = validBlue.length > 0 ? Math.round(blueSum / validBlue.length) : 0;
+      currentMatch.redAvg = validRed.length > 0 ? Math.round(redSum / validRed.length) : 0;
       currentMatch.diff = Math.abs(currentMatch.blueAvg - currentMatch.redAvg);
 
       document.getElementById('stat-avg-diff').textContent = `${currentMatch.diff} pt`;
@@ -2474,6 +2598,8 @@ function runSmartBalancing() {
 
       renderTeamLaneRoster('blue', currentMatch.blue, currentMatch.red);
       renderTeamLaneRoster('red', currentMatch.red, currentMatch.blue);
+      if (typeof renderLaneMatchupIndicators === 'function') renderLaneMatchupIndicators();
+      if (typeof renderAlternativeCards === 'function') renderAlternativeCards();
     }
 
 function renderTeamLaneRoster(teamColor, teamRoster, enemyRoster) {
@@ -2484,12 +2610,35 @@ function renderTeamLaneRoster(teamColor, teamRoster, enemyRoster) {
       teamRoster.forEach((player, idx) => {
         const role = ORDERED_ROLES[idx];
         const roleInfo = ROLE_METADATA[role];
-        const enemy = enemyRoster[idx];
+        const enemy = enemyRoster ? enemyRoster[idx] : null;
+
+        // 🌟 선수가 빠져서 빈 슬롯인 경우: 대기 UI 표시
+        if (!player) {
+          const emptySlot = document.createElement('div');
+          emptySlot.className = `p-3 rounded-xl border-2 border-dashed flex items-center justify-between text-xs transition select-none ${
+            teamColor === 'blue' ? 'border-blue-400/50 bg-blue-500/5' : 'border-red-400/50 bg-red-500/5'
+          }`;
+          emptySlot.innerHTML = `
+            <div class="flex items-center gap-2.5">
+              <div class="w-7 h-7 rounded-lg bg-white dark:bg-[#121721] flex flex-col items-center justify-center shrink-0">
+                <i class="fa-solid ${roleInfo.icon} ${roleInfo.color} text-xs"></i>
+                <span class="text-[8px] font-bold text-slate-400 uppercase leading-none">${role}</span>
+              </div>
+              <div>
+                <span class="font-extrabold text-amber-500">+ 선수 교체 대기 중</span>
+                <span class="text-[10px] text-slate-400 block">상단 참가자 목록에서 교체할 소환사를 클릭하세요</span>
+              </div>
+            </div>
+            <span class="text-[10px] font-bold text-slate-400 font-mono">빈 슬롯</span>
+          `;
+          container.appendChild(emptySlot);
+          return;
+        }
 
         const baseMMR = getPlayerMMR(player).mmr;
         const pMMR = getRoleSpecificMMR(player, role);
-        const eMMR = getRoleSpecificMMR(enemy, role);
-        const delta = pMMR - eMMR;
+        const eMMR = enemy ? getRoleSpecificMMR(enemy, role) : baseMMR;
+        const delta = enemy ? (pMMR - eMMR) : 0;
 
         const prefs = player.rolePrefs || [player.mainRole, player.subRole];
         let roleFitBadge = '<span class="text-[9px] px-1 rounded bg-rose-500/10 text-rose-400 font-bold">5지망</span>';
@@ -2498,51 +2647,36 @@ function renderTeamLaneRoster(teamColor, teamRoster, enemyRoster) {
         else if (prefs[2] === role) roleFitBadge = '<span class="text-[9px] px-1 rounded bg-amber-500/10 text-amber-500 font-bold">3지망</span>';
         else if (prefs[3] === role) roleFitBadge = '<span class="text-[9px] px-1 rounded bg-purple-500/10 text-purple-400 font-bold">4지망</span>';
 
-        // 🌟 배정된 라인(role)에 맞는 실전 모스트 챔피언 추출
+        // 🌟 [순수 내전 히스토리 100% 집계] 솔랭 모스트 배제
         const targetRoleChamps = CHAMPION_ROLES[role] || [];
         const rolePlayedMap = {};
 
-        if (Array.isArray(matchHistory)) {
+        if (Array.isArray(matchHistory) && matchHistory.length > 0) {
           matchHistory.forEach(m => {
             const inMatch = [...(m.blue || []), ...(m.red || [])].find(p => isSameSummonerName(p.name, player.name));
             if (inMatch) {
               const playedC = inMatch.champion || inMatch.most;
               const playedR = (inMatch.role || '').toUpperCase();
-              if (playedC && (playedR === role || targetRoleChamps.includes(playedC))) {
-                rolePlayedMap[playedC] = (rolePlayedMap[playedC] || 0) + 1;
+              if (playedC && (playedR === role || (playedR === 'UNKNOWN' && targetRoleChamps.includes(playedC)))) {
+                const koName = getChampionKoName(playedC);
+                if (koName && koName !== '자유픽' && koName.length > 1) {
+                  rolePlayedMap[koName] = (rolePlayedMap[koName] || 0) + 1;
+                }
               }
             }
           });
         }
 
-        let assignedMostList = Object.entries(rolePlayedMap)
+        const assignedMostList = Object.entries(rolePlayedMap)
           .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
           .map(e => e[0]);
 
-        const fullSummoner = summoners.find(s => isSameSummonerName(s.name, player.name));
-        const regMost = (player.most && player.most.length > 0) ? player.most : (fullSummoner?.most || []);
-
-        regMost.forEach(c => {
-          if (assignedMostList.length < 3 && targetRoleChamps.includes(c) && !assignedMostList.includes(c)) {
-            assignedMostList.push(c);
-          }
-        });
-
-        regMost.forEach(c => {
-          if (assignedMostList.length < 3 && !assignedMostList.includes(c)) {
-            assignedMostList.push(c);
-          }
-        });
-
-        // 🌟 모스트 챔피언 아이콘 + 한글 이름 뱃지 생성
-        const roleMostBadgesHtml = assignedMostList.slice(0, 3).map(c => {
-          const cKo = getChampionKoName(c);
+        const roleMostBadgesHtml = assignedMostList.map(cKo => {
           const cIcon = getChampionIconUrl(cKo);
           const cEn = CHAMPION_NAME_KO_TO_EN[cKo] || cKo;
-          if (!cKo || cKo.length <= 1 || cKo === '자유픽') return '';
-
           return `
-            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-200/70 dark:bg-[#161d2a] border border-slate-300 dark:border-slate-700/80 text-[10px] font-bold text-slate-800 dark:text-gray-200 shrink-0 shadow-sm" title="${role} 모스트: ${cKo}">
+            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-200/70 dark:bg-[#161d2a] border border-slate-300 dark:border-slate-700/80 text-[10px] font-bold text-slate-800 dark:text-gray-200 shrink-0 shadow-sm" title="${role} 내전 모스트: ${cKo}">
               ${cIcon ? `<img src="${cIcon}" alt="${cKo}" class="w-4 h-4 rounded-full object-cover shrink-0 border border-slate-600/40" onerror="this.onerror=null; this.src='https://opgg-static.akamaized.net/meta/images/lol/latest/champion/${cEn}.png';">` : ''}
               <span class="truncate max-w-[65px]">${cKo}</span>
             </span>
@@ -2570,10 +2704,7 @@ function renderTeamLaneRoster(teamColor, teamRoster, enemyRoster) {
                 <span class="font-bold truncate text-slate-800 dark:text-gray-100">${player.name}</span>
                 <span class="tier-badge tier-${(player.tier||'unranked').toLowerCase()}">${player.tier}</span>
                 ${roleFitBadge}
-                <!-- 🌟 배정 라인 전용 모스트 챔피언 아이콘 + 이름 뱃지 -->
-                <div class="flex items-center gap-1 ml-1 flex-wrap">
-                  ${roleMostBadgesHtml}
-                </div>
+                ${roleMostBadgesHtml ? `<div class="flex items-center gap-1 ml-1 flex-wrap">${roleMostBadgesHtml}</div>` : ''}
               </div>
               <div class="text-[10px] text-slate-400">
                 라인 체급 <strong class="text-amber-500 font-bold">${pMMR}pt</strong>${pMMR !== baseMMR ? ` <span class="text-[9px] text-slate-500">(기본 ${baseMMR}p)</span>` : ''}
@@ -2587,7 +2718,7 @@ function renderTeamLaneRoster(teamColor, teamRoster, enemyRoster) {
               </span>
               <div class="text-[9px] text-slate-400">${player.wins||0}승 ${player.losses||0}패</div>
             </div>
-            <button onclick="event.stopPropagation(); removePlayerFromTeam('${teamColor}', ${idx})" class="w-6 h-6 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 flex items-center justify-center transition cursor-pointer" title="이 선수 대진에서 제외">
+            <button onclick="event.stopPropagation(); removePlayerFromTeam('${teamColor}', ${idx})" class="w-6 h-6 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 flex items-center justify-center transition cursor-pointer" title="이 선수 제외">
               <i class="fa-solid fa-xmark text-xs"></i>
             </button>
           </div>
@@ -2596,28 +2727,69 @@ function renderTeamLaneRoster(teamColor, teamRoster, enemyRoster) {
       });
     }
 
-    function handleDragStartLane(e, team, idx) {
-      draggedLaneData = { team, idx };
-      e.dataTransfer.setData('text/plain', JSON.stringify({ team, idx }));
+function handleDragStartLane(e, team, idx) {
+      draggedLaneData = { type: 'lane', team, idx };
+      e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'lane', team, idx }));
     }
 
     function handleDropLane(e, targetTeam, targetIdx) {
       e.preventDefault();
-      if (!draggedLaneData || !currentMatch) return;
+      if (!currentMatch) return;
 
-      const sourceTeam = draggedLaneData.team;
-      const sourceIdx = draggedLaneData.idx;
+      let dragData = null;
+      try {
+        const raw = e.dataTransfer.getData('text/plain');
+        if (raw) dragData = JSON.parse(raw);
+      } catch (err) {}
+      if (!dragData) dragData = draggedLaneData;
+      if (!dragData) return;
 
-      const sourcePlayer = currentMatch[sourceTeam][sourceIdx];
-      const targetPlayer = currentMatch[targetTeam][targetIdx];
+      // 1. 상단 타일에서 끌어다 놓은 경우
+      if (dragData.type === 'pool') {
+        const pId = dragData.playerId;
+        const playerObj = summoners.find(s => s.id === pId);
+        if (!playerObj) return;
 
-      currentMatch[sourceTeam][sourceIdx] = targetPlayer;
-      currentMatch[targetTeam][targetIdx] = sourcePlayer;
+        // 이미 대진표 다른 라인에 들어가 있다면 해당 자리는 빈자리(null)로 처리
+        ['blue', 'red'].forEach(t => {
+          currentMatch[t].forEach((p, i) => {
+            if (p && p.id === pId) currentMatch[t][i] = null;
+          });
+        });
 
-      recalculateMatchMMR();
-      saveLocalData();
-      showToast(`${sourcePlayer.name} ↔ ${targetPlayer.name} 선수가 교체되었습니다!`, 'info');
-      draggedLaneData = null;
+        // 대상 슬롯에 선수 투입
+        currentMatch[targetTeam][targetIdx] = playerObj;
+
+        recalculateMatchMMR();
+        syncSelectedFromCurrentMatch();
+        showToast(`[${playerObj.name}] 선수가 배정되었습니다!`, 'success');
+        draggedLaneData = null;
+        return;
+      }
+
+      // 2. 대진표 내에서 선수를 끌어다 놓은 경우 (스왑 또는 빈 슬롯 이동)
+      if (dragData.type === 'lane') {
+        const sourceTeam = dragData.team;
+        const sourceIdx = dragData.idx;
+
+        const sourcePlayer = currentMatch[sourceTeam][sourceIdx];
+        const targetPlayer = currentMatch[targetTeam][targetIdx];
+
+        if (!sourcePlayer) return;
+
+        currentMatch[sourceTeam][sourceIdx] = targetPlayer;
+        currentMatch[targetTeam][targetIdx] = sourcePlayer;
+
+        recalculateMatchMMR();
+        syncSelectedFromCurrentMatch();
+
+        if (targetPlayer) {
+          showToast(`${sourcePlayer.name} ↔ ${targetPlayer.name} 맞교체되었습니다!`, 'info');
+        } else {
+          showToast(`[${sourcePlayer.name}] 선수가 이동되었습니다!`, 'info');
+        }
+        draggedLaneData = null;
+      }
     }
 
 let summonerSortKey = 'mmr';
