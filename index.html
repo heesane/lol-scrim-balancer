@@ -1158,15 +1158,16 @@
 
       let enKey = CHAMPION_NAME_KO_TO_EN[clean] || 
                   CHAMPION_NAME_KO_TO_EN[noSpace] || 
-                  (CHAMPION_NAME_EN_TO_KO[lower] ? CHAMPION_NAME_KO_TO_EN[CHAMPION_NAME_EN_TO_KO[lower]] : null);
+                  (CHAMPION_NAME_EN_TO_KO[lower] ? CHAMPION_NAME_EN_TO_KO[lower] : null);
 
       if (!enKey) {
         const foundKo = Object.keys(CHAMPION_NAME_KO_TO_EN).find(k => k.toLowerCase() === lower || k.replace(/\s+/g, '').toLowerCase() === noSpace.toLowerCase());
         if (foundKo) enKey = CHAMPION_NAME_KO_TO_EN[foundKo];
       }
       if (!enKey && clean.match(/^[A-Za-z]+$/)) enKey = clean;
-      if (!enKey || enKey.length <= 1) return ''; // 🌟 'L' 같은 단일 오인식 글자 방어
-      return `https://ddragon.leagueoflegends.com/cdn/14.24.1/img/champion/${enKey}.png`;
+      if (!enKey || enKey.length <= 1) return '';
+      // 🌟 주소의 14.24.1을 직접 확인하신 16.22.1로 변경
+      return `https://ddragon.leagueoflegends.com/cdn/16.22.1/img/champion/${enKey}.png`;
     }
 
     // 🌟 모스트 칩 렌더러 (한글명 + 원형 얼굴 사진 + 엑박 방지 onerror)
