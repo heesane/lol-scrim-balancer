@@ -1823,6 +1823,7 @@ function syncStatsFromHistory() {
     }
 
       function getPlayerMMR(p) {
+      if (!p) return { mmr: 0, scrimWeightPct: 0 };
       // 1. 기초 체급 환산 (솔랭 50% + 최고티어 30% + 자랭 20%)
       const soloPts = parseRankPoints(p.soloTier);
       const flexPts = parseRankPoints(p.flexTier);
@@ -1889,6 +1890,7 @@ function syncStatsFromHistory() {
     };
 
 function getRoleSpecificMMR(player, assignedRole) {
+      if (!player) return 0;
       const baseMMR = getPlayerMMR(player).mmr;
       const prefs = player.rolePrefs || [player.mainRole || 'MID', player.subRole || 'TOP', 'ADC', 'SUP'];
 
@@ -2200,8 +2202,8 @@ function getRoleSpecificMMR(player, assignedRole) {
 
       currentMatch[teamColor][idx] = null;
 
+      syncSelectedFromCurrentMatch(); // 🌟 상단 선택 상태를 먼저 동기화 (이후 렌더 에러와 무관하게 보장)
       recalculateMatchMMR();
-      syncSelectedFromCurrentMatch(); // 🌟 상단 선택 상태 즉시 동기화
       showToast(`[${removedPlayer.name}] 선수가 제외되었습니다. 빈자리에 다른 선수를 드래그하거나 클릭하세요.`, 'info');
     }
 
@@ -2453,6 +2455,15 @@ function runSmartBalancing() {
       let htmlContent = '';
       for (let i = 0; i < 5; i++) {
         const role = ORDERED_ROLES[i];
+        // 🌟 빈 슬롯(null)이 있으면 격차 계산 없이 대기 표시 (여기서 에러가 나면 이후 동기화가 전부 중단됨)
+        if (!currentMatch.blue[i] || !currentMatch.red[i]) {
+          htmlContent += `
+          <div class="flex flex-col items-center justify-center my-1 select-none" title="${role} 슬롯 비어 있음">
+            <span class="text-[9px] font-mono px-2 py-0.5 rounded-full border text-slate-500 bg-slate-500/5 border-slate-600/20">-</span>
+            <span class="text-[8px] font-bold mt-0.5 text-slate-500">빈 슬롯</span>
+          </div>`;
+          continue;
+        }
         const gap = getRoleSpecificMMR(currentMatch.blue[i], role) - getRoleSpecificMMR(currentMatch.red[i], role);
         let symbol = '≈', badgeColor = 'text-slate-400 bg-slate-500/10 border-slate-600/30';
         if (gap >= 250) { symbol = '>>>'; badgeColor = 'text-blue-400 bg-blue-500/20 border-blue-500/50 font-black'; }
