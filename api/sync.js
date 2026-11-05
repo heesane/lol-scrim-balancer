@@ -79,14 +79,26 @@ export default async function handler(req, res) {
         resolvedPosts = incoming.communityPosts;
       }
 
+      // 🌟 대진표가 있으면 선택 인원은 항상 대진표 기준으로 저장
+      const nextMatch = incoming.currentMatch !== undefined ? incoming.currentMatch : existing.currentMatch;
+      let nextSelected = Array.isArray(incoming.selectedPlayerIds)
+        ? incoming.selectedPlayerIds
+        : (existing.selectedPlayerIds || []);
+
+      if (nextMatch) {
+        nextSelected = [...(nextMatch.blue || []), ...(nextMatch.red || [])]
+          .filter(Boolean)
+          .map(p => p.id);
+      }
+
       const payload = {
         summoners: (Array.isArray(incoming.summoners) && incoming.summoners.length > 0) ? incoming.summoners : (existing.summoners || []),
         matchHistory: resolvedHistory,
         replayArchives: Array.isArray(incoming.replayArchives) ? incoming.replayArchives : (existing.replayArchives || []),
         scrimSchedules: (incoming.scrimSchedules && typeof incoming.scrimSchedules === 'object') ? incoming.scrimSchedules : (existing.scrimSchedules || {}),
         communityPosts: resolvedPosts,
-        selectedPlayerIds: Array.isArray(incoming.selectedPlayerIds) ? incoming.selectedPlayerIds : (existing.selectedPlayerIds || []),
-        currentMatch: incoming.currentMatch !== undefined ? incoming.currentMatch : existing.currentMatch,
+        selectedPlayerIds: nextSelected,   // ← 변경
+        currentMatch: nextMatch,           // ← 변경
         updatedAt: now
       };
 
