@@ -2067,8 +2067,16 @@ function getRoleSpecificMMR(player, assignedRole) {
       grid.innerHTML = '';
       document.getElementById('nav-roster-count').textContent = summoners.length;
 
-      // 10명 초과 방지 정규화
-      if (selectedPlayerIds.size > 10) {
+      // 🌟 대진표가 있으면 '대진표에 실제로 배정된 선수'만을 선택 상태로 사용
+      //    (클라우드 동기화가 옛 selectedPlayerIds를 덮어써도 항상 대진표와 일치)
+      if (currentMatch) {
+        const ids = [];
+        ['blue', 'red'].forEach(t => {
+          (currentMatch[t] || []).forEach(p => { if (p && p.id) ids.push(p.id); });
+        });
+        selectedPlayerIds = new Set(ids);
+      } else if (selectedPlayerIds.size > 10) {
+        // 10명 초과 방지 정규화
         selectedPlayerIds = new Set(Array.from(selectedPlayerIds).slice(0, 10));
         saveLocalData();
       }
