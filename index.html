@@ -4023,16 +4023,24 @@ function resetMatchHistory() {
       showToast('참가가 취소되었습니다.', 'info');
     }
 
-    function launchBalancerWithSchedule() {
+      function launchBalancerWithSchedule() {
       const sched = scrimSchedules[selectedSchedDateKey];
       if (!sched || !sched.participants) return;
-      const confirmed = sched.participants.filter(p => p.status !== 'HOLD');
+      
+      // 'JOIN(참가)' 상태인 인원만 필터링
+      const confirmed = sched.participants.filter(p => p.status === 'JOIN');
       if (confirmed.length < 10) {
         showToast('최소 10명의 참가 확정 인원이 있어야 밸런서로 연동할 수 있습니다.', 'error');
         return;
       }
 
-      selectedPlayerIds = new Set(confirmed.slice(0, 10).map(p => p.id || summoners.find(s => s.name === p.name)?.id).filter(Boolean));
+      // 🌟 ID와 유연한 이름 비교(isSameSummonerName)를 통해 정확한 멤버 객체를 매핑
+      const matchedIds = confirmed.slice(0, 10).map(p => {
+        const found = summoners.find(s => s.id === p.id || isSameSummonerName(s.name, p.name));
+        return found ? found.id : null;
+      }).filter(Boolean);
+
+      selectedPlayerIds = new Set(matchedIds);
       saveLocalData();
       switchTab('balancer');
       showToast('참가 신청한 10명이 스마트-밸런서에 세팅되었습니다! [스마트 밸런싱 실행]을 누르세요!', 'success');
