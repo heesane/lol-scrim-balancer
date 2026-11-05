@@ -1430,12 +1430,14 @@ async function initData() {
     }
 
 function syncStatsFromHistory() {
+      // 기록이 비어 있다고 기존 MMR/전적을 초기화하지 않는다.
+      // 초기 멤버에만 기본값을 채우고, 저장된 값은 유지한다.
       if (!matchHistory || matchHistory.length === 0) {
         summoners.forEach(s => {
-          s.wins = 0;
-          s.losses = 0;
-          s.formScore = 85;
-          s.carryBonus = 0;
+          if (!Number.isFinite(Number(s.wins))) s.wins = 0;
+          if (!Number.isFinite(Number(s.losses))) s.losses = 0;
+          if (!Number.isFinite(Number(s.formScore))) s.formScore = 85;
+          if (!Number.isFinite(Number(s.carryBonus))) s.carryBonus = 0;
         });
         return;
       }
@@ -3575,14 +3577,37 @@ function resetMatchHistory() {
         flexTier: document.getElementById('form-flex-tier').value.trim() || '언랭',
         soloGames: parseInt(document.getElementById('form-solo-games').value, 10) || 0,
         flexGames: parseInt(document.getElementById('form-flex-games').value, 10) || 0,
-        customBaseTier: document.getElementById('form-custom-base').value.trim(),
-        most: document.getElementById('form-champions').value.split(',').map(c => c.trim()).filter(Boolean),
-        formScore: 85
+        // 관리자 전용 보정값은 관리자 세션에서만 변경 가능.
+        // 일반 편집/숨김 필드의 빈 값이 기존 보정값을 지우지 않게 한다.
+        most: document.getElementById('form-champions').value.split(',').map(c => c.trim()).filter(Boolean)
       };
 
       if (id) {
-        summoners = summoners.map(s => s.id === id ? { ...s, ...player } : s);
+        const existing = summoners.find(s => s.id === id);
+        if (!existing) {
+          showToast('수정할 멤버를 찾을 수 없습니다. 목록을 새로고침해 주세요.', 'error');
+          return;
+        }
+        const customBaseInput = document.getElementById('form-custom-base');
+        const nextCustomBaseTier = isAdminLoggedIn
+          ? (customBaseInput ? customBaseInput.value.trim() : (existing.customBaseTier || ''))
+          : (existing.customBaseTier || '');
+        summoners = summoners.map(s => s.id === id ? {
+          ...s,
+          ...player,
+          customBaseTier: nextCustomBaseTier,
+          // 멤버 정보 편집은 누적 내전 전적/폼 점수를 초기화하지 않는다.
+          wins: s.wins ?? 0,
+          losses: s.losses ?? 0,
+          formScore: s.formScore ?? 85,
+          carryBonus: s.carryBonus ?? 0
+        } : s);
       } else {
+        // 신규 멤버의 보정 점수 역시 관리자만 설정할 수 있다.
+        const customBaseInput = document.getElementById('form-custom-base');
+        player.customBaseTier = isAdminLoggedIn && customBaseInput ? customBaseInput.value.trim() : '';
+        player.formScore = 85;
+        player.carryBonus = 0;
         player.id = 'p-' + Date.now();
         player.wins = 0;
         player.losses = 0;
