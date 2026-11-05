@@ -3242,7 +3242,7 @@ function resetMatchHistory() {
       if (tabKey === 'summoners') renderSummonersList();
       if (tabKey === 'history') renderMatchHistory();
       if (tabKey === 'replay') renderReplayArchiveList();
-      if (tabKey === 'most') { closeMostDetailView(); renderMostStatsTable(); }
+      if (tabKey === 'most') { renderMostStatsTable(); } // ✅ 수정 완료 (불필요한 함수 호출 제거)
       if (tabKey === 'community') { closePostDetailView(); renderCommunityBoard(); }
     }
 
