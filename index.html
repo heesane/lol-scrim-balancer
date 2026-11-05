@@ -1142,32 +1142,74 @@
       return acc;
     }, {});
 
+// 🌟 168개 챔피언 공식 한/영 딕셔너리 (크산테, 멜, 유나라 완비)
+    const CHAMPION_NAME_KO_TO_EN = {
+      '가렌':'Garen','갈리오':'Galio','갱플랭크':'Gangplank','그라가스':'Gragas','그레이브즈':'Graves','그웬':'Gwen',
+      '나르':'Gnar','나미':'Nami','나서스':'Nasus','나피리':'Naafiri','노틸러스':'Nautilus','녹턴':'Nocturne',
+      '누누':'Nunu','누누와 윌럼프':'Nunu','누누와윌럼프':'Nunu','니달리':'Nidalee','니코':'Neeko','닐라':'Nilah',
+      '다리우스':'Darius','다이애나':'Diana','드레이븐':'Draven','라이즈':'Ryze','라칸':'Rakan','람머스':'Rammus',
+      '럭스':'Lux','럼블':'Rumble','레넥톤':'Renekton','레오나':'Leona','레이븐':'Raven','렐':'Rell',
+      '레나타':'Renata','레나타 글라스크':'Renata','레나타글라스크':'Renata','렝가':'Rengar','루시안':'Lucian',
+      '룰루':'Lulu','르블랑':'Leblanc','리 신':'LeeSin','리신':'LeeSin','leesin':'LeeSin','리븐':'Riven','리산드라':'Lissandra',
+      '릴리아':'Lillia','마스터 이':'MasterYi','마스터이':'MasterYi','마이':'MasterYi','마오카이':'Maokai',
+      '말자하':'Malzahar','말파이트':'Malphite','멜':'Mel','모데카이저':'Mordekaiser','모르가나':'Morgana',
+      '문도':'DrMundo','문도 박사':'DrMundo','문도박사':'DrMundo','미스 포츈':'MissFortune','미스포츈':'MissFortune','미포':'MissFortune',
+      '밀리오':'Milio','바드':'Bard','바루스':'Varus','바이':'Vi','베이가':'Veigar','베인':'Vayne',
+      '벡스':'Vex','벨베스':'Belveth','벨코즈':'Velkoz','볼리베어':'Volibear','브라움':'Braum','브라이어':'Briar',
+      '브랜드':'Brand','블라디미르':'Vladimir','블리츠크랭크':'Blitzcrank','블츠':'Blitzcrank','빅토르':'Viktor',
+      '뽀삐':'Poppy','사미라':'Samira','사이온':'Sion','사일러스':'Sylas','샤코':'Shaco','세나':'Senna',
+      '세라핀':'Seraphine','세주아니':'Sejuani','세트':'Sett','소나':'Sona','소라카':'Soraka','쉔':'Shen',
+      '쉬바나':'Shyvana','스몰더':'Smolder','스웨인':'Swain','스카너':'Skarner','시비르':'Sivir',
+      '신 짜오':'XinZhao','신짜오':'XinZhao','신드라':'Syndra','신지드':'Singed','쓰레쉬':'Thresh',
+      '아리':'Ahri','아무무':'Amumu','아우렐리온 솔':'AurelionSol','아우솔':'AurelionSol','아이번':'Ivern',
+      '아지르':'Azir','아칼리':'Akali','아크샨':'Akshan','아트록스':'Aatrox','아펠리오스':'Aphelios',
+      '알리스타':'Alistar','암베사':'Ambessa','야스오':'Yasuo','에코':'Ekko','엘리스':'Elise','오공':'MonkeyKing',
+      '오로라':'Aurora','오른':'Ornn','오리아나':'Orianna','올라프':'Olaf','요네':'Yone','요릭':'Yorick',
+      '우디르':'Udyr','우르곳':'Urgot','워윅':'Warwick','유미':'Yuumi','유나라':'Yunara','이렐리아':'Irelia',
+      '이즈리얼':'Ezreal','일라오이':'Illaoi','자르반':'JarvanIV','자르반 4세':'JarvanIV','자르반4세':'JarvanIV',
+      '자야':'Xayah','자이라':'Zyra','자크':'Zac','잔나':'Janna','잭스':'Jax','제드':'Zed','제라스':'Xerath',
+      '제리':'Zeri','제이스':'Jayce','조이':'Zoe','직스':'Ziggs','진':'Jhin','질리언':'Zilean','징크스':'Jinx',
+      '초가스':'Chogath','카르마':'Karma','카밀':'Camille','카사딘':'Kassadin','카시오페아':'Cassiopeia',
+      '카이사':'Kaisa','카직스':'Khazix','카타리나':'Katarina','칼리스타':'Kalista','케넨':'Kennen',
+      '케이틀린':'Caitlyn','케인':'Kayn','케일':'Kayle','코그모':'KogMaw','코르키':'Corki','크산테':'KSante',
+      '카산테':'KSante','ksante':'KSante','클레드':'Kled','키아나':'Qiyana','타릭':'Taric','탈론':'Talon','탈리야':'Taliyah',
+      '탐 켄치':'TahmKench','탐켄치':'TahmKench','tahmkench':'TahmKench','트런들':'Trundle','트리스타나':'Tristana',
+      '트린다미어':'Tryndamere','트위스티드 페이트':'TwistedFate','트페':'TwistedFate','트위스티드페이트':'TwistedFate',
+      '트위치':'Twitch','티모':'Teemo','파이크':'Pyke','판테온':'Pantheon','피들스틱':'Fiddlesticks','피오라':'Fiora',
+      '피즈':'Fizz','하이머딩거':'Heimerdinger','헤카림':'Hecarim','흐웨이':'Hwei','화이':'Hwei'
+    };
+
+    const CHAMPION_NAME_EN_TO_KO = Object.entries(CHAMPION_NAME_KO_TO_EN).reduce((acc, [ko, en]) => {
+      acc[en.toLowerCase()] = ko;
+      acc[en.replace(/[\s\.\'\-_]/g, '').toLowerCase()] = ko;
+      return acc;
+    }, {});
+
     function getChampionKoName(champ) {
       if (!champ) return '자유픽';
       const clean = champ.toString().trim();
-      const lower = clean.toLowerCase();
-      if (CHAMPION_NAME_EN_TO_KO[lower]) return CHAMPION_NAME_EN_TO_KO[lower];
+      const normalized = clean.replace(/[\s\.\'\-_]/g, '').toLowerCase();
+      if (CHAMPION_NAME_EN_TO_KO[normalized]) return CHAMPION_NAME_EN_TO_KO[normalized];
+      if (CHAMPION_NAME_KO_TO_EN[clean]) return clean;
       return clean;
     }
 
-      function getChampionIconUrl(champ) {
+    function getChampionIconUrl(champ) {
       if (!champ || champ === '자유픽') return '';
       const clean = champ.toString().trim();
-      const lower = clean.toLowerCase();
-      const noSpace = clean.replace(/\s+/g, '');
+      const normalized = clean.replace(/[\s\.\'\-_]/g, '').toLowerCase();
 
       let enKey = CHAMPION_NAME_KO_TO_EN[clean] || 
-                  CHAMPION_NAME_KO_TO_EN[noSpace] || 
-                  (CHAMPION_NAME_EN_TO_KO[lower] ? CHAMPION_NAME_EN_TO_KO[lower] : null);
+                  CHAMPION_NAME_KO_TO_EN[normalized] || 
+                  (CHAMPION_NAME_EN_TO_KO[normalized] ? CHAMPION_NAME_KO_TO_EN[CHAMPION_NAME_EN_TO_KO[normalized]] : null);
 
       if (!enKey) {
-        const foundKo = Object.keys(CHAMPION_NAME_KO_TO_EN).find(k => k.toLowerCase() === lower || k.replace(/\s+/g, '').toLowerCase() === noSpace.toLowerCase());
-        if (foundKo) enKey = CHAMPION_NAME_KO_TO_EN[foundKo];
+        const found = Object.keys(CHAMPION_NAME_KO_TO_EN).find(k => k.replace(/[\s\.\'\-_]/g, '').toLowerCase() === normalized);
+        if (found) enKey = CHAMPION_NAME_KO_TO_EN[found];
       }
       if (!enKey && clean.match(/^[A-Za-z]+$/)) enKey = clean;
       if (!enKey || enKey.length <= 1) return '';
-      // 🌟 주소의 14.24.1을 직접 확인하신 16.22.1로 변경
-      return `https://ddragon.leagueoflegends.com/cdn/16.22.1/img/champion/${enKey}.png`;
+      return `https://ddragon.leagueoflegends.com/cdn/14.24.1/img/champion/${enKey}.png`;
     }
 
     // 🌟 모스트 칩 렌더러 (한글명 + 원형 얼굴 사진 + 엑박 방지 onerror)
@@ -2434,8 +2476,9 @@ function runSmartBalancing() {
       renderTeamLaneRoster('red', currentMatch.red, currentMatch.blue);
     }
 
-    function renderTeamLaneRoster(teamColor, teamRoster, enemyRoster) {
+function renderTeamLaneRoster(teamColor, teamRoster, enemyRoster) {
       const container = document.getElementById(`${teamColor}-roster-list`);
+      if (!container) return;
       container.innerHTML = '';
 
       teamRoster.forEach((player, idx) => {
@@ -2454,6 +2497,57 @@ function runSmartBalancing() {
         else if (prefs[1] === role) roleFitBadge = '<span class="text-[9px] px-1 rounded bg-sky-500/10 text-sky-500 font-bold">2지망</span>';
         else if (prefs[2] === role) roleFitBadge = '<span class="text-[9px] px-1 rounded bg-amber-500/10 text-amber-500 font-bold">3지망</span>';
         else if (prefs[3] === role) roleFitBadge = '<span class="text-[9px] px-1 rounded bg-purple-500/10 text-purple-400 font-bold">4지망</span>';
+
+        // 🌟 배정된 라인(role)에 맞는 실전 모스트 챔피언 추출
+        const targetRoleChamps = CHAMPION_ROLES[role] || [];
+        const rolePlayedMap = {};
+
+        if (Array.isArray(matchHistory)) {
+          matchHistory.forEach(m => {
+            const inMatch = [...(m.blue || []), ...(m.red || [])].find(p => isSameSummonerName(p.name, player.name));
+            if (inMatch) {
+              const playedC = inMatch.champion || inMatch.most;
+              const playedR = (inMatch.role || '').toUpperCase();
+              if (playedC && (playedR === role || targetRoleChamps.includes(playedC))) {
+                rolePlayedMap[playedC] = (rolePlayedMap[playedC] || 0) + 1;
+              }
+            }
+          });
+        }
+
+        let assignedMostList = Object.entries(rolePlayedMap)
+          .sort((a, b) => b[1] - a[1])
+          .map(e => e[0]);
+
+        const fullSummoner = summoners.find(s => isSameSummonerName(s.name, player.name));
+        const regMost = (player.most && player.most.length > 0) ? player.most : (fullSummoner?.most || []);
+
+        regMost.forEach(c => {
+          if (assignedMostList.length < 3 && targetRoleChamps.includes(c) && !assignedMostList.includes(c)) {
+            assignedMostList.push(c);
+          }
+        });
+
+        regMost.forEach(c => {
+          if (assignedMostList.length < 3 && !assignedMostList.includes(c)) {
+            assignedMostList.push(c);
+          }
+        });
+
+        // 🌟 모스트 챔피언 아이콘 + 한글 이름 뱃지 생성
+        const roleMostBadgesHtml = assignedMostList.slice(0, 3).map(c => {
+          const cKo = getChampionKoName(c);
+          const cIcon = getChampionIconUrl(cKo);
+          const cEn = CHAMPION_NAME_KO_TO_EN[cKo] || cKo;
+          if (!cKo || cKo.length <= 1 || cKo === '자유픽') return '';
+
+          return `
+            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-200/70 dark:bg-[#161d2a] border border-slate-300 dark:border-slate-700/80 text-[10px] font-bold text-slate-800 dark:text-gray-200 shrink-0 shadow-sm" title="${role} 모스트: ${cKo}">
+              ${cIcon ? `<img src="${cIcon}" alt="${cKo}" class="w-4 h-4 rounded-full object-cover shrink-0 border border-slate-600/40" onerror="this.onerror=null; this.src='https://opgg-static.akamaized.net/meta/images/lol/latest/champion/${cEn}.png';">` : ''}
+              <span class="truncate max-w-[65px]">${cKo}</span>
+            </span>
+          `;
+        }).join('');
 
         const card = document.createElement('div');
         card.setAttribute('draggable', 'true');
@@ -2476,20 +2570,10 @@ function runSmartBalancing() {
                 <span class="font-bold truncate text-slate-800 dark:text-gray-100">${player.name}</span>
                 <span class="tier-badge tier-${(player.tier||'unranked').toLowerCase()}">${player.tier}</span>
                 ${roleFitBadge}
-                <!-- 🌟 모스트 챔피언 원형 아이콘 (3개) -->
-                ${(() => {
-                  const sObj = summoners.find(s => isSameSummonerName(s.name, player.name));
-                  const mList = (player.most && player.most.length > 0) ? player.most.slice(0, 3) : (sObj?.most && sObj.most.length > 0 ? sObj.most.slice(0, 3) : []);
-                  if (!mList.length) return '';
-                  return `<div class="flex items-center gap-1 ml-1">` + mList.map(c => {
-                    const cKo = getChampionKoName(c);
-                    const cIcon = getChampionIconUrl(cKo);
-                    const cEn = CHAMPION_NAME_KO_TO_EN[cKo] || cKo;
-                    return `<div class="w-5 h-5 rounded-full overflow-hidden border border-slate-600/60 bg-slate-800 shrink-0 shadow-sm" title="모스트: ${cKo}">` +
-                      (cIcon ? `<img src="${cIcon}" alt="${cKo}" class="w-full h-full object-cover" onerror="this.onerror=null; this.src='https://opgg-static.akamaized.net/meta/images/lol/latest/champion/${cEn}.png';">` : `<span class="text-[8px] font-black text-amber-400 flex items-center justify-center h-full">${cKo.slice(0,1)}</span>`) +
-                    `</div>`;
-                  }).join('') + `</div>`;
-                })()}
+                <!-- 🌟 배정 라인 전용 모스트 챔피언 아이콘 + 이름 뱃지 -->
+                <div class="flex items-center gap-1 ml-1 flex-wrap">
+                  ${roleMostBadgesHtml}
+                </div>
               </div>
               <div class="text-[10px] text-slate-400">
                 라인 체급 <strong class="text-amber-500 font-bold">${pMMR}pt</strong>${pMMR !== baseMMR ? ` <span class="text-[9px] text-slate-500">(기본 ${baseMMR}p)</span>` : ''}
@@ -2894,7 +2978,7 @@ let summonerSortKey = 'mmr';
           <!-- 🌟 상세 내용 (클릭 시 펼쳐지는 10인 KDA/딜량/CS/티어 상세 테이블) -->
           <div id="match-detail-${matchSafeId}" class="hidden border-t border-slate-800/80 p-3 sm:p-4 bg-black/40 space-y-2">
             
-            <!-- 블루팀 상세 -->
+<!-- 블루팀 상세 -->
             <div class="rounded-xl overflow-hidden ${isBlueWin ? 'bg-blue-950/30 border border-blue-900/40' : 'bg-slate-900/50 border border-slate-800/40'}">
               <div class="px-3 py-1.5 text-[10px] font-black flex justify-between ${isBlueWin ? 'text-blue-400 bg-blue-950/50' : 'text-slate-400 bg-slate-900/80'}">
                 <span>${isBlueWin ? '👑 승리 (블루팀)' : '패배 (블루팀)'}</span>
@@ -2907,11 +2991,17 @@ let summonerSortKey = 'mmr';
                   const pOfficial = summoners.find(s => isSameSummonerName(s.name, p.name));
                   const pDisplayName = pOfficial?.name || p.name;
                   const pDesc = pOfficial?.description ? ` (${pOfficial.description})` : '';
+                  const pEn = CHAMPION_NAME_KO_TO_EN[pChampKo] || pChampKo;
                   return `
                     <div class="px-3 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-3 hover:bg-white/5 transition">
                       <div class="flex items-center gap-2.5 min-w-[200px] truncate">
                         ${(p.role && p.role !== 'UNKNOWN') ? `<span class="w-7 font-bold text-[9px] text-slate-400 text-center shrink-0 uppercase">${p.role}</span>` : ''}
-                        ${pChampIcon ? `<img src="${pChampIcon}" class="w-6 h-6 rounded-lg object-cover shrink-0 border border-slate-700">` : ''}
+                        <div class="w-6 h-6 rounded-lg overflow-hidden bg-slate-800 border border-slate-700 shrink-0 flex items-center justify-center">
+                          ${pChampIcon 
+                            ? `<img src="${pChampIcon}" alt="${pChampKo}" class="w-full h-full object-cover" onerror="this.onerror=null; this.src='https://opgg-static.akamaized.net/meta/images/lol/latest/champion/${pEn}.png';">` 
+                            : `<span class="text-[9px] font-bold text-amber-400">${pChampKo.slice(0, 2)}</span>`
+                          }
+                        </div>
                         <span class="font-bold text-slate-200 truncate">${pDisplayName}<span class="text-amber-400 text-[10px]">${pDesc}</span></span>
                         <span class="tier-badge tier-${getSummonerRealTier(p).toLowerCase()}">${getSummonerRealTier(p)}</span>
                       </div>
@@ -2941,11 +3031,17 @@ let summonerSortKey = 'mmr';
                   const pOfficial = summoners.find(s => isSameSummonerName(s.name, p.name));
                   const pDisplayName = pOfficial?.name || p.name;
                   const pDesc = pOfficial?.description ? ` (${pOfficial.description})` : '';
+                  const pEn = CHAMPION_NAME_KO_TO_EN[pChampKo] || pChampKo;
                   return `
                     <div class="px-3 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-3 hover:bg-white/5 transition">
                       <div class="flex items-center gap-2.5 min-w-[200px] truncate">
                         ${(p.role && p.role !== 'UNKNOWN') ? `<span class="w-7 font-bold text-[9px] text-slate-400 text-center shrink-0 uppercase">${p.role}</span>` : ''}
-                        ${pChampIcon ? `<img src="${pChampIcon}" class="w-6 h-6 rounded-lg object-cover shrink-0 border border-slate-700">` : ''}
+                        <div class="w-6 h-6 rounded-lg overflow-hidden bg-slate-800 border border-slate-700 shrink-0 flex items-center justify-center">
+                          ${pChampIcon 
+                            ? `<img src="${pChampIcon}" alt="${pChampKo}" class="w-full h-full object-cover" onerror="this.onerror=null; this.src='https://opgg-static.akamaized.net/meta/images/lol/latest/champion/${pEn}.png';">` 
+                            : `<span class="text-[9px] font-bold text-amber-400">${pChampKo.slice(0, 2)}</span>`
+                          }
+                        </div>
                         <span class="font-bold text-slate-200 truncate">${pDisplayName}<span class="text-amber-400 text-[10px]">${pDesc}</span></span>
                         <span class="tier-badge tier-${getSummonerRealTier(p).toLowerCase()}">${getSummonerRealTier(p)}</span>
                       </div>
@@ -2961,7 +3057,6 @@ let summonerSortKey = 'mmr';
                 }).join('')}
               </div>
             </div>
-
           </div>
         `;
         container.appendChild(card);
