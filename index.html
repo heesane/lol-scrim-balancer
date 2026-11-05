@@ -2058,17 +2058,47 @@ function getRoleSpecificMMR(player, assignedRole) {
       document.getElementById('modal-summoner').classList.remove('hidden');
     }
 
-    function renderSelectionGrid() {
+      function renderSelectionGrid() {
       const grid = document.getElementById('balancer-selection-grid');
       if (!grid) return;
       grid.innerHTML = '';
       document.getElementById('nav-roster-count').textContent = summoners.length;
 
-      // 🌟 [핵심] 10명 초과 선택(19/10명 등) 발생 시 즉시 10명으로 잘라내어 정규화
-      if (selectedPlayerIds.size > 10) {
-        selectedPlayerIds = new Set(Array.from(selectedPlayerIds).slice(0, 10));
-        saveLocalData();
-      }
+      summoners.forEach(s => {
+        const isSel = selectedPlayerIds.has(s.id);
+        const mmrData = getPlayerMMR(s);
+        const mainR = ROLE_METADATA[s.mainRole] || ROLE_METADATA.FILL;
+
+        const tile = document.createElement('div');
+        // 🌟 상단 타일 드래그 앤 드롭 활성화
+        tile.setAttribute('draggable', 'true');
+        tile.ondragstart = (e) => {
+          e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'pool', playerId: s.id }));
+        };
+
+        tile.className = `p-2 rounded-xl border text-xs transition select-none flex items-center justify-between gap-1.5 cursor-grab active:cursor-grabbing hover:border-amber-400 ${
+          isSel ? 'bg-amber-500/10 border-amber-500 font-bold ring-1 ring-amber-500/30' : 'bg-slate-50 dark:bg-[#161d2a] border-slate-200 dark:border-slate-800'
+        }`;
+
+        tile.innerHTML = `
+          <div onclick="toggleSelectPlayer('${s.id}')" class="flex items-center gap-1.5 truncate flex-1 cursor-pointer">
+            <span class="${mainR.color}"><i class="fa-solid ${mainR.icon}"></i></span>
+            <span class="truncate text-slate-800 dark:text-gray-200">${s.name}</span>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <span class="text-[10px] text-slate-400">${mmrData.mmr}p</span>
+            <button onclick="event.stopPropagation(); removePlayerFromSelection('${s.id}')" title="제외" class="text-slate-400 hover:text-rose-500 p-0.5">
+              <i class="fa-solid fa-circle-xmark text-xs"></i>
+            </button>
+          </div>
+        `;
+        grid.appendChild(tile);
+      });
+
+      const count = selectedPlayerIds.size;
+      document.getElementById('selected-badge').textContent = `${count} / 10명 선택됨`;
+      document.getElementById('btn-run-balancing').disabled = (count !== 10);
+    }
 
       summoners.forEach(s => {
         const isSel = selectedPlayerIds.has(s.id);
@@ -2100,47 +2130,82 @@ function getRoleSpecificMMR(player, assignedRole) {
       document.getElementById('btn-run-balancing').disabled = (count !== 10);
     }
 
-function toggleSelectPlayer(id) {
-      if (selectedPlayerIds.has(id)) {
-        // 이미 선택된 선수를 클릭하여 해제할 때
-        removePlayerFromSelection(id);
-      } else {
-        // 새 선수를 추가할 때
-        if (selectedPlayerIds.size >= 10 && (!currentMatch || !hasEmptySlotInMatch())) {
-          showToast('최대 10명까지만 선택할 수 있습니다. (다른 멤버를 먼저 해제하세요)', 'error');
-          return;
+// 🌟 [신규 추가] 대진표(currentMatch) 상태를 기준으로 상단 선택(selectedPlayerIds)을 100% 일치시키는 함수
+    function syncSelectedFromCurrentMatch() {
+      if (!currentMatch) return;
+      const activeIds = [];
+      ['blue', 'red'].forEach(team => {
+        if (Array.isArray(currentMatch[team])) {
+          currentMatch[team].forEach(p => {
+            if (p && p.id) activeIds.push(p.id);
+          });
         }
-
-        const newPlayer = summoners.find(s => s.id === id);
-        if (!newPlayer) return;
-
-        selectedPlayerIds.add(id);
-
-        // 🌟 현재 대진표에 빈 슬롯(null)이 있다면 그 자리에 즉시 자동 투입!
-        if (currentMatch) {
-          fillEmptySlotWithPlayer(newPlayer);
-        }
-      }
+      });
+      selectedPlayerIds = new Set(activeIds);
       saveLocalData();
       renderSelectionGrid();
-      renderSidebarDrawerList();
     }
 
-    // 상단 타일 [X] 클릭 시 대진표에서도 해당 선수를 null로 비움
-    function removePlayerFromSelection(id) {
-      selectedPlayerIds.delete(id);
-      if (currentMatch) {
-        ['blue', 'red'].forEach(team => {
-          if (Array.isArray(currentMatch[team])) {
-            const fIdx = currentMatch[team].findIndex(p => p && p.id === id);
-            if (fIdx !== -1) currentMatch[team][fIdx] = null;
-          }
-        });
-        recalculateMatchMMR();
+    // 🌟 [교체] 상단 타일 클릭 시: 빈 슬롯이 있으면 즉시 넣고, 이미 대진표에 있으면 뺌
+    function toggleSelectPlayer(id) {
+      const playerObj = summoners.find(s => s.id === id);
+      if (!playerObj) return;
+
+      // 1. 이미 대진표에 들어가 있는 선수를 클릭한 경우 -> 대진표에서 제외(null로 비움)
+      if (selectedPlayerIds.has(id)) {
+        if (currentMatch) {
+          ['blue', 'red'].forEach(t => {
+            currentMatch[t].forEach((p, idx) => {
+              if (p && p.id === id) currentMatch[t][idx] = null;
+            });
+          });
+          recalculateMatchMMR();
+          syncSelectedFromCurrentMatch();
+          showToast(`[${playerObj.name}] 선수가 대진에서 제외되었습니다.`, 'info');
+        } else {
+          selectedPlayerIds.delete(id);
+          saveLocalData();
+          renderSelectionGrid();
+        }
+        return;
       }
-      saveLocalData();
-      renderSelectionGrid();
-      renderSidebarDrawerList();
+
+      // 2. 새로운 선수를 클릭한 경우
+      if (currentMatch) {
+        // 대진표에 빈 슬롯(null)이 있는지 확인 후 첫 번째 빈자리에 배정
+        let filled = false;
+        for (let team of ['blue', 'red']) {
+          for (let i = 0; i < 5; i++) {
+            if (currentMatch[team][i] === null) {
+              currentMatch[team][i] = playerObj;
+              filled = true;
+              break;
+            }
+          }
+          if (filled) break;
+        }
+
+        if (filled) {
+          recalculateMatchMMR();
+          syncSelectedFromCurrentMatch();
+          showToast(`[${playerObj.name}] 선수가 빈자리에 배정되었습니다!`, 'success');
+        } else {
+          showToast('대진표 10명이 모두 차 있습니다. 교체할 선수의 [X]를 먼저 눌러주세요.', 'error');
+        }
+      } else {
+        if (selectedPlayerIds.size >= 10) {
+          showToast('최대 10명까지만 선택할 수 있습니다.', 'error');
+          return;
+        }
+        selectedPlayerIds.add(id);
+        saveLocalData();
+        renderSelectionGrid();
+      }
+    }
+
+    // 🌟 [교체] 상단 타일의 작은 [X] 버튼을 눌렀을 때도 동일하게 처리
+    function removePlayerFromSelection(id) {
+      toggleSelectPlayer(id);
     }
 
     // 빈 슬롯 유무 확인 헬퍼
@@ -2425,17 +2490,13 @@ function runSmartBalancing() {
       const removedPlayer = currentMatch[teamColor][idx];
       if (!removedPlayer) return;
 
-      // 1. 선택 목록에서 제거
-      selectedPlayerIds.delete(removedPlayer.id);
-
-      // 2. 대진표 전체를 날리지 않고 해당 라인 슬롯만 null(빈자리)로 변경!
+      // 해당 라인을 빈 슬롯(null)으로 전환
       currentMatch[teamColor][idx] = null;
 
       recalculateMatchMMR();
-      saveLocalData();
-      renderSelectionGrid();
-      renderSidebarDrawerList();
-      showToast(`[${removedPlayer.name}] 선수가 제외되었습니다. 상단에서 대체할 선수를 클릭하세요.`, 'info');
+      // 🌟 상단 선택 목록에서도 즉시 해제하여 완벽 동기화
+      syncSelectedFromCurrentMatch();
+      showToast(`[${removedPlayer.name}] 선수가 제외되었습니다. 빈자리에 다른 선수를 드래그하거나 클릭하세요.`, 'info');
     }
 
         
@@ -2650,28 +2711,69 @@ function renderTeamLaneRoster(teamColor, teamRoster, enemyRoster) {
       });
     }
 
-    function handleDragStartLane(e, team, idx) {
-      draggedLaneData = { team, idx };
-      e.dataTransfer.setData('text/plain', JSON.stringify({ team, idx }));
+function handleDragStartLane(e, team, idx) {
+      draggedLaneData = { type: 'lane', team, idx };
+      e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'lane', team, idx }));
     }
 
     function handleDropLane(e, targetTeam, targetIdx) {
       e.preventDefault();
-      if (!draggedLaneData || !currentMatch) return;
+      if (!currentMatch) return;
 
-      const sourceTeam = draggedLaneData.team;
-      const sourceIdx = draggedLaneData.idx;
+      let dragData = null;
+      try {
+        const raw = e.dataTransfer.getData('text/plain');
+        if (raw) dragData = JSON.parse(raw);
+      } catch (err) {}
+      if (!dragData) dragData = draggedLaneData;
+      if (!dragData) return;
 
-      const sourcePlayer = currentMatch[sourceTeam][sourceIdx];
-      const targetPlayer = currentMatch[targetTeam][targetIdx];
+      // 1. 상단 타일에서 끌어다 놓은 경우
+      if (dragData.type === 'pool') {
+        const pId = dragData.playerId;
+        const playerObj = summoners.find(s => s.id === pId);
+        if (!playerObj) return;
 
-      currentMatch[sourceTeam][sourceIdx] = targetPlayer;
-      currentMatch[targetTeam][targetIdx] = sourcePlayer;
+        // 이미 대진표 다른 라인에 들어가 있다면 해당 자리는 빈자리(null)로 처리
+        ['blue', 'red'].forEach(t => {
+          currentMatch[t].forEach((p, i) => {
+            if (p && p.id === pId) currentMatch[t][i] = null;
+          });
+        });
 
-      recalculateMatchMMR();
-      saveLocalData();
-      showToast(`${sourcePlayer.name} ↔ ${targetPlayer.name} 선수가 교체되었습니다!`, 'info');
-      draggedLaneData = null;
+        // 대상 슬롯에 선수 투입
+        currentMatch[targetTeam][targetIdx] = playerObj;
+
+        recalculateMatchMMR();
+        syncSelectedFromCurrentMatch();
+        showToast(`[${playerObj.name}] 선수가 배정되었습니다!`, 'success');
+        draggedLaneData = null;
+        return;
+      }
+
+      // 2. 대진표 내에서 선수를 끌어다 놓은 경우 (스왑 또는 빈 슬롯 이동)
+      if (dragData.type === 'lane') {
+        const sourceTeam = dragData.team;
+        const sourceIdx = dragData.idx;
+
+        const sourcePlayer = currentMatch[sourceTeam][sourceIdx];
+        const targetPlayer = currentMatch[targetTeam][targetIdx];
+
+        if (!sourcePlayer) return;
+
+        currentMatch[sourceTeam][sourceIdx] = targetPlayer;
+        currentMatch[targetTeam][targetIdx] = sourcePlayer;
+
+        recalculateMatchMMR();
+        syncSelectedFromCurrentMatch();
+
+        if (targetPlayer) {
+          showToast(`${sourcePlayer.name} ↔ ${targetPlayer.name} 맞교체되었습니다!`, 'info');
+        } else {
+          showToast(`[${sourcePlayer.name}] 선수가 이동되었습니다!`, 'info');
+        }
+        draggedLaneData = null;
+      }
     }
 
 let summonerSortKey = 'mmr';
