@@ -2058,11 +2058,17 @@ function getRoleSpecificMMR(player, assignedRole) {
       document.getElementById('modal-summoner').classList.remove('hidden');
     }
 
-      function renderSelectionGrid() {
+function renderSelectionGrid() {
       const grid = document.getElementById('balancer-selection-grid');
       if (!grid) return;
       grid.innerHTML = '';
       document.getElementById('nav-roster-count').textContent = summoners.length;
+
+      // 10명 초과 방지 정규화
+      if (selectedPlayerIds.size > 10) {
+        selectedPlayerIds = new Set(Array.from(selectedPlayerIds).slice(0, 10));
+        saveLocalData();
+      }
 
       summoners.forEach(s => {
         const isSel = selectedPlayerIds.has(s.id);
@@ -2070,7 +2076,6 @@ function getRoleSpecificMMR(player, assignedRole) {
         const mainR = ROLE_METADATA[s.mainRole] || ROLE_METADATA.FILL;
 
         const tile = document.createElement('div');
-        // 🌟 상단 타일 드래그 앤 드롭 활성화
         tile.setAttribute('draggable', 'true');
         tile.ondragstart = (e) => {
           e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'pool', playerId: s.id }));
@@ -2082,7 +2087,7 @@ function getRoleSpecificMMR(player, assignedRole) {
 
         tile.innerHTML = `
           <div onclick="toggleSelectPlayer('${s.id}')" class="flex items-center gap-1.5 truncate flex-1 cursor-pointer">
-            <span class="${mainR.color}"><i class="fa-solid ${mainR.icon}"></i></span>
+            <span class="${mainR.color}" title="1순위:${s.rolePrefs?.[0] || s.mainRole} / 2순위:${s.rolePrefs?.[1] || s.subRole}"><i class="fa-solid ${mainR.icon}"></i></span>
             <span class="truncate text-slate-800 dark:text-gray-200">${s.name}</span>
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
@@ -2130,7 +2135,7 @@ function getRoleSpecificMMR(player, assignedRole) {
       document.getElementById('btn-run-balancing').disabled = (count !== 10);
     }
 
-// 🌟 [신규 추가] 대진표(currentMatch) 상태를 기준으로 상단 선택(selectedPlayerIds)을 100% 일치시키는 함수
+// 🌟 [핵심] 대진표(currentMatch) 상태를 기준으로 상단 선택(selectedPlayerIds)을 100% 실시간 동기화
     function syncSelectedFromCurrentMatch() {
       if (!currentMatch) return;
       const activeIds = [];
@@ -2146,12 +2151,11 @@ function getRoleSpecificMMR(player, assignedRole) {
       renderSelectionGrid();
     }
 
-    // 🌟 [교체] 상단 타일 클릭 시: 빈 슬롯이 있으면 즉시 넣고, 이미 대진표에 있으면 뺌
+// 🌟 상단 타일 클릭 시: 빈 슬롯이 있으면 즉시 넣고, 이미 대진표에 있으면 뺌
     function toggleSelectPlayer(id) {
       const playerObj = summoners.find(s => s.id === id);
       if (!playerObj) return;
 
-      // 1. 이미 대진표에 들어가 있는 선수를 클릭한 경우 -> 대진표에서 제외(null로 비움)
       if (selectedPlayerIds.has(id)) {
         if (currentMatch) {
           ['blue', 'red'].forEach(t => {
@@ -2170,9 +2174,7 @@ function getRoleSpecificMMR(player, assignedRole) {
         return;
       }
 
-      // 2. 새로운 선수를 클릭한 경우
       if (currentMatch) {
-        // 대진표에 빈 슬롯(null)이 있는지 확인 후 첫 번째 빈자리에 배정
         let filled = false;
         for (let team of ['blue', 'red']) {
           for (let i = 0; i < 5; i++) {
@@ -2204,8 +2206,22 @@ function getRoleSpecificMMR(player, assignedRole) {
     }
 
     // 🌟 [교체] 상단 타일의 작은 [X] 버튼을 눌렀을 때도 동일하게 처리
+    // 상단 타일 [X] 버튼 클릭 시
     function removePlayerFromSelection(id) {
       toggleSelectPlayer(id);
+    }
+
+    // 🌟 대진표 카드 내부의 [X] 버튼 클릭 시 (해당 자리만 비우고 상단 선택도 해제)
+    function removePlayerFromTeam(teamColor, idx) {
+      if (!currentMatch) return;
+      const removedPlayer = currentMatch[teamColor][idx];
+      if (!removedPlayer) return;
+
+      currentMatch[teamColor][idx] = null;
+
+      recalculateMatchMMR();
+      syncSelectedFromCurrentMatch(); // 🌟 상단 선택 상태 즉시 동기화
+      showToast(`[${removedPlayer.name}] 선수가 제외되었습니다. 빈자리에 다른 선수를 드래그하거나 클릭하세요.`, 'info');
     }
 
     // 빈 슬롯 유무 확인 헬퍼
