@@ -1150,18 +1150,22 @@
       return clean;
     }
 
-    // 🌟 최신 패치(14.24.1) 및 이중 CDN 백업 탑재 (암베사, 오로라 등 신챔프 100% 대응)
-    function getChampionIconUrl(champ) {
+      function getChampionIconUrl(champ) {
       if (!champ || champ === '자유픽') return '';
       const clean = champ.toString().trim();
       const lower = clean.toLowerCase();
-      let enKey = CHAMPION_NAME_KO_TO_EN[clean] || (CHAMPION_NAME_EN_TO_KO[lower] ? CHAMPION_NAME_KO_TO_EN[CHAMPION_NAME_EN_TO_KO[lower]] : null);
+      const noSpace = clean.replace(/\s+/g, '');
+
+      let enKey = CHAMPION_NAME_KO_TO_EN[clean] || 
+                  CHAMPION_NAME_KO_TO_EN[noSpace] || 
+                  (CHAMPION_NAME_EN_TO_KO[lower] ? CHAMPION_NAME_KO_TO_EN[CHAMPION_NAME_EN_TO_KO[lower]] : null);
+
       if (!enKey) {
-        const foundKo = Object.keys(CHAMPION_NAME_KO_TO_EN).find(k => k.toLowerCase() === lower);
+        const foundKo = Object.keys(CHAMPION_NAME_KO_TO_EN).find(k => k.toLowerCase() === lower || k.replace(/\s+/g, '').toLowerCase() === noSpace.toLowerCase());
         if (foundKo) enKey = CHAMPION_NAME_KO_TO_EN[foundKo];
       }
       if (!enKey && clean.match(/^[A-Za-z]+$/)) enKey = clean;
-      if (!enKey) return '';
+      if (!enKey || enKey.length <= 1) return ''; // 🌟 'L' 같은 단일 오인식 글자 방어
       return `https://ddragon.leagueoflegends.com/cdn/14.24.1/img/champion/${enKey}.png`;
     }
 
