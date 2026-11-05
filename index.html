@@ -2597,6 +2597,12 @@ function renderTeamLaneRoster(teamColor, teamRoster, enemyRoster) {
           emptySlot.className = `p-3 rounded-xl border-2 border-dashed flex items-center justify-between text-xs transition select-none ${
             teamColor === 'blue' ? 'border-blue-400/50 bg-blue-500/5' : 'border-red-400/50 bg-red-500/5'
           }`;
+          // 🌟 빈 슬롯도 드롭 대상이 되도록 이벤트 연결
+          const hoverCls = ['bg-amber-500/20', 'border-amber-400'];
+          emptySlot.ondragover = (ev) => { ev.preventDefault(); emptySlot.classList.add(...hoverCls); };
+          emptySlot.ondragenter = (ev) => { ev.preventDefault(); emptySlot.classList.add(...hoverCls); };
+          emptySlot.ondragleave = () => emptySlot.classList.remove(...hoverCls);
+          emptySlot.ondrop = (ev) => { emptySlot.classList.remove(...hoverCls); handleDropLane(ev, teamColor, idx); };
           emptySlot.innerHTML = `
             <div class="flex items-center gap-2.5">
               <div class="w-7 h-7 rounded-lg bg-white dark:bg-[#121721] flex flex-col items-center justify-center shrink-0">
@@ -2729,19 +2735,30 @@ function handleDragStartLane(e, team, idx) {
         const playerObj = summoners.find(s => s.id === pId);
         if (!playerObj) return;
 
-        // 이미 대진표 다른 라인에 들어가 있다면 해당 자리는 빈자리(null)로 처리
+        // 현재 대진표에서 이 선수의 위치 찾기
+        let srcTeam = null, srcIdx = -1;
         ['blue', 'red'].forEach(t => {
           currentMatch[t].forEach((p, i) => {
-            if (p && p.id === pId) currentMatch[t][i] = null;
+            if (p && p.id === pId) { srcTeam = t; srcIdx = i; }
           });
         });
 
-        // 대상 슬롯에 선수 투입
-        currentMatch[targetTeam][targetIdx] = playerObj;
+        const occupant = currentMatch[targetTeam][targetIdx];
+        if (occupant && occupant.id === pId) { draggedLaneData = null; return; }
 
-        recalculateMatchMMR();
+        if (srcTeam !== null) {
+          // 이미 대진표에 있는 선수 → 대상 칸과 서로 교체 (대상이 비었으면 이동)
+          currentMatch[srcTeam][srcIdx] = occupant || null;
+          currentMatch[targetTeam][targetIdx] = playerObj;
+          showToast(occupant ? `${playerObj.name} ↔ ${occupant.name} 맞교체되었습니다!` : `[${playerObj.name}] 선수가 이동되었습니다!`, 'info');
+        } else {
+          // 대진표에 없던 선수 → 대상 칸에 투입 (기존 선수는 대진에서 제외)
+          currentMatch[targetTeam][targetIdx] = playerObj;
+          showToast(occupant ? `[${playerObj.name}] 투입 / [${occupant.name}] 대진에서 제외되었습니다.` : `[${playerObj.name}] 선수가 배정되었습니다!`, 'success');
+        }
+
         syncSelectedFromCurrentMatch();
-        showToast(`[${playerObj.name}] 선수가 배정되었습니다!`, 'success');
+        recalculateMatchMMR();
         draggedLaneData = null;
         return;
       }
@@ -2759,8 +2776,8 @@ function handleDragStartLane(e, team, idx) {
         currentMatch[sourceTeam][sourceIdx] = targetPlayer;
         currentMatch[targetTeam][targetIdx] = sourcePlayer;
 
-        recalculateMatchMMR();
         syncSelectedFromCurrentMatch();
+        recalculateMatchMMR();
 
         if (targetPlayer) {
           showToast(`${sourcePlayer.name} ↔ ${targetPlayer.name} 맞교체되었습니다!`, 'info');
