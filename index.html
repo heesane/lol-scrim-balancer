@@ -2075,8 +2075,8 @@ function getRoleSpecificMMR(player, assignedRole) {
         const isSel = selectedPlayerIds.has(s.id);
         const mmrData = getPlayerMMR(s);
         const mainR = ROLE_METADATA[s.mainRole] || ROLE_METADATA.FILL;
-
         const tile = document.createElement('div');
+        
         tile.setAttribute('draggable', 'true');
         tile.ondragstart = (e) => {
           e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'pool', playerId: s.id }));
@@ -2100,6 +2100,11 @@ function getRoleSpecificMMR(player, assignedRole) {
         `;
         grid.appendChild(tile);
       });
+
+      const count = selectedPlayerIds.size;
+      document.getElementById('selected-badge').textContent = `${count} / 10명 선택됨`;
+      document.getElementById('btn-run-balancing').disabled = (count !== 10);
+    }
 
       const count = selectedPlayerIds.size;
       document.getElementById('selected-badge').textContent = `${count} / 10명 선택됨`;
