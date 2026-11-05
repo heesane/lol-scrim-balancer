@@ -1100,6 +1100,11 @@
           <input id="form-custom-base" type="text" placeholder="예: M (550LP), 3700, GM (600LP) 등" class="w-full bg-white dark:bg-[#121721] border border-amber-500/40 rounded-xl px-3 py-2 text-xs font-bold text-amber-500 focus:outline-none">
         </div>
         <div>
+          <label for="form-history-aliases" class="block text-slate-700 dark:text-gray-300 font-semibold mb-1">내전 히스토리 이름 연결 (이전 닉네임/태그, 쉼표 구분)</label>
+          <input id="form-history-aliases" type="text" placeholder="예: 이전닉네임#KR1, 예전 소환사명" class="w-full bg-slate-50 dark:bg-[#161d2a] border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2">
+          <p class="text-[10px] text-slate-400 mt-1">이름을 변경해도 기존 내전 기록을 현재 멤버에 연결합니다. 기록 자체는 수정하지 않습니다.</p>
+        </div>
+        <div>
           <label for="form-champions" class="block text-slate-700 dark:text-gray-300 font-semibold mb-1">모스트 챔피언 (쉼표 구분)</label>
           <input id="form-champions" type="text" placeholder="진, 이즈리얼, 시비르" class="w-full bg-slate-50 dark:bg-[#161d2a] border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2">
         </div>
@@ -1241,6 +1246,18 @@
       const taglessA = cleanA.split('#')[0].replace(/\s+/g, '');
       const taglessB = cleanB.split('#')[0].replace(/\s+/g, '');
       return taglessA === taglessB;
+    }
+
+    // 현재 닉네임뿐 아니라 관리자가 등록한 이전 닉네임으로도 과거 내전 기록을 연결한다.
+    function isHistoryPlayerForSummoner(historyName, summoner) {
+      if (!historyName || !summoner) return false;
+      if (isSameSummonerName(historyName, summoner.name)) return true;
+      const aliases = Array.isArray(summoner.historyAliases)
+        ? summoner.historyAliases
+        : (typeof summoner.historyAliases === 'string'
+            ? summoner.historyAliases.split(',').map(v => v.trim()).filter(Boolean)
+            : []);
+      return aliases.some(alias => isSameSummonerName(historyName, alias));
     }
 
     // 🌟 소환사 실제 티어 및 프로필 정보 조회 헬퍼 (UNRANKED 방지)
@@ -1430,9 +1447,8 @@ async function initData() {
     }
 
 function syncStatsFromHistory() {
-      // 기록이 비어 있다고 기존 MMR/전적을 초기화하지 않는다.
-      // 초기 멤버에만 기본값을 채우고, 저장된 값은 유지한다.
       if (!matchHistory || matchHistory.length === 0) {
+        // 히스토리가 일시적으로 비어 있어도 저장된 전적/폼 보정값을 초기화하지 않는다.
         summoners.forEach(s => {
           if (!Number.isFinite(Number(s.wins))) s.wins = 0;
           if (!Number.isFinite(Number(s.losses))) s.losses = 0;
@@ -1450,14 +1466,14 @@ function syncStatsFromHistory() {
           const redPlayers = m.red || [];
           const allPlayers = [...bluePlayers, ...redPlayers];
 
-          const isBlue = bluePlayers.some(p => isSameSummonerName(p.name, s.name));
-          const isRed = redPlayers.some(p => isSameSummonerName(p.name, s.name));
+          const isBlue = bluePlayers.some(p => isHistoryPlayerForSummoner(p.name, s));
+          const isRed = redPlayers.some(p => isHistoryPlayerForSummoner(p.name, s));
 
           if (isBlue || isRed) {
             count++;
             const myTeam = isBlue ? bluePlayers : redPlayers;
             const isWinner = isBlue ? (m.winner === 'BLUE') : (m.winner === 'RED');
-            const myData = (isBlue ? bluePlayers : redPlayers).find(p => isSameSummonerName(p.name, s.name));
+            const myData = (isBlue ? bluePlayers : redPlayers).find(p => isHistoryPlayerForSummoner(p.name, s));
 
             if (isWinner) w++; else l++;
 
@@ -3548,6 +3564,7 @@ function resetMatchHistory() {
         customBaseBox.classList.toggle('hidden', !isAdminLoggedIn);
       }
       document.getElementById('form-champions').value = (p.most || []).join(', ');
+      document.getElementById('form-history-aliases').value = (Array.isArray(p.historyAliases) ? p.historyAliases : []).join(', ');
       document.getElementById('modal-summoner').classList.remove('hidden');
     }
 
@@ -3577,37 +3594,25 @@ function resetMatchHistory() {
         flexTier: document.getElementById('form-flex-tier').value.trim() || '언랭',
         soloGames: parseInt(document.getElementById('form-solo-games').value, 10) || 0,
         flexGames: parseInt(document.getElementById('form-flex-games').value, 10) || 0,
-        // 관리자 전용 보정값은 관리자 세션에서만 변경 가능.
-        // 일반 편집/숨김 필드의 빈 값이 기존 보정값을 지우지 않게 한다.
-        most: document.getElementById('form-champions').value.split(',').map(c => c.trim()).filter(Boolean)
+        customBaseTier: document.getElementById('form-custom-base').value.trim(),
+        most: document.getElementById('form-champions').value.split(',').map(c => c.trim()).filter(Boolean),
+        historyAliases: (document.getElementById('form-history-aliases')?.value || '').split(',').map(v => v.trim()).filter(Boolean),
+        formScore: 85
       };
 
       if (id) {
-        const existing = summoners.find(s => s.id === id);
-        if (!existing) {
-          showToast('수정할 멤버를 찾을 수 없습니다. 목록을 새로고침해 주세요.', 'error');
-          return;
-        }
-        const customBaseInput = document.getElementById('form-custom-base');
-        const nextCustomBaseTier = isAdminLoggedIn
-          ? (customBaseInput ? customBaseInput.value.trim() : (existing.customBaseTier || ''))
-          : (existing.customBaseTier || '');
-        summoners = summoners.map(s => s.id === id ? {
-          ...s,
-          ...player,
-          customBaseTier: nextCustomBaseTier,
-          // 멤버 정보 편집은 누적 내전 전적/폼 점수를 초기화하지 않는다.
-          wins: s.wins ?? 0,
-          losses: s.losses ?? 0,
-          formScore: s.formScore ?? 85,
-          carryBonus: s.carryBonus ?? 0
-        } : s);
+        summoners = summoners.map(s => {
+          if (s.id !== id) return s;
+          return {
+            ...s,
+            ...player,
+            wins: s.wins ?? 0,
+            losses: s.losses ?? 0,
+            formScore: s.formScore ?? 85,
+            carryBonus: s.carryBonus ?? 0
+          };
+        });
       } else {
-        // 신규 멤버의 보정 점수 역시 관리자만 설정할 수 있다.
-        const customBaseInput = document.getElementById('form-custom-base');
-        player.customBaseTier = isAdminLoggedIn && customBaseInput ? customBaseInput.value.trim() : '';
-        player.formScore = 85;
-        player.carryBonus = 0;
         player.id = 'p-' + Date.now();
         player.wins = 0;
         player.losses = 0;
