@@ -3001,36 +3001,41 @@ let summonerSortKey = 'mmr';
       }
     }
 
-function renderMatchHistory() {
+// 🌟 DEEPLOL 실측 아코디언 매치 히스토리 렌더러 (최신 시간순 자동 정렬 + 원형 챔피언 사진 + 레이아웃 고정)
+    function renderMatchHistory() {
       const container = document.getElementById('match-history-list');
       if (!container) return;
       container.innerHTML = '';
       document.getElementById('nav-history-count').textContent = matchHistory.length;
 
       if (matchHistory.length === 0) {
-        container.innerHTML = `<div class="p-12 text-center text-xs text-slate-400 bg-white dark:bg-[#121721] rounded-2xl border border-slate-200 dark:border-slate-800">기록된 내전 매치가 없습니다. 리플레이를 등록하거나 경기를 기록해주세요.</div>`;
+        container.innerHTML = `<div class="p-12 text-center text-xs text-slate-400 bg-white dark:bg-[#121721] rounded-2xl border border-slate-200 dark:border-slate-800">기록된 내전 매치가 없습니다.</div>`;
         return;
       }
 
-      // 🌟 [날짜 및 시간순 완벽 내림차순 정렬] 11.06, 11.05, 11.04, 10.31 순서로 최신 경기가 맨 위로 오도록 정렬
+      // 1. 🌟 [날짜 및 시간순 완벽 내림차순 정렬]
       matchHistory.sort((a, b) => {
-        const parseDateVal = str => {
-          if (!str) return 0;
-          let clean = str.toString().trim().replace(/[^0-9\.:]/g, '');
-          // '11.05', '11.06' 형태의 날짜를 타임스탬프로 변환하여 정확한 크기 비교
-          if (clean.includes('.')) {
-            const parts = clean.split('.');
-            const m = parseInt(parts[0], 10) || 1;
-            const d = parseInt(parts[1], 10) || 1;
-            return new Date(new Date().getFullYear(), m - 1, d).getTime();
+        const parseToTimestamp = (item) => {
+          if (!item) return 0;
+          if (item.dateKey && !isNaN(Date.parse(item.dateKey))) {
+            return Date.parse(item.dateKey);
           }
-          const t = Date.parse(clean);
-          return isNaN(t) ? 0 : t;
+          const raw = (item.date || '').toString().trim();
+          const match = raw.match(/(\d{1,2})[\.\-\/월]\s*(\d{1,2})/);
+          if (match) {
+            const m = parseInt(match[1], 10) - 1;
+            const d = parseInt(match[2], 10);
+            const timeMatch = raw.match(/(\d{1,2}):(\d{1,2})/);
+            const hour = timeMatch ? parseInt(timeMatch[1], 10) : 0;
+            const min = timeMatch ? parseInt(timeMatch[2], 10) : 0;
+            return new Date(2026, m, d, hour, min).getTime();
+          }
+          const parsed = Date.parse(raw);
+          if (!isNaN(parsed)) return parsed;
+          return parseInt(item.id?.replace(/\D/g, '') || '0', 10);
         };
 
-        const timeA = parseDateVal(a.dateKey || a.date) || parseInt(a.id?.replace(/\D/g, '') || '0', 10);
-        const timeB = parseDateVal(b.dateKey || b.date) || parseInt(b.id?.replace(/\D/g, '') || '0', 10);
-        return timeB - timeA; // 내림차순 (최신 날짜가 위로)
+        return parseToTimestamp(b) - parseToTimestamp(a);
       });
 
       matchHistory.forEach((m, mIdx) => {
@@ -3040,22 +3045,28 @@ function renderMatchHistory() {
         const redPlayers = m.red || [];
         const allPlayers = [...bluePlayers, ...redPlayers];
 
-        // MVP 플레이어 및 DeepLoL 크롤링 스코어 데이터 추출
+        // MVP 플레이어 및 챔피언 정보 추출
         const mvpName = m.mvp || '';
         const mvpPlayer = allPlayers.find(p => isSameSummonerName(p.name, mvpName)) || allPlayers[0] || {};
         const mvpScore = parseInt(mvpPlayer.aiScore || 85, 10);
         const mvpChamp = mvpPlayer.champion || mvpPlayer.most || '챔피언';
         const mvpChampKo = getChampionKoName(mvpChamp);
         const mvpChampIcon = getChampionIconUrl(mvpChamp);
+        const mvpEn = CHAMPION_NAME_KO_TO_EN[mvpChampKo] || mvpChampKo;
 
-        // KDA 파싱
+        // KDA 분해
         const kdaRaw = (mvpPlayer.kda || '0/0/0').split(' ')[0].split('/');
         const mvpK = kdaRaw[0] || '0';
         const mvpD = kdaRaw[1] || '0';
         const mvpA = kdaRaw[2] || '0';
-        const kdaRatio = mvpPlayer.kda?.includes('(') ? mvpPlayer.kda.split('(')[1].replace(')', '') : (parseInt(mvpD) === 0 ? 'Perfect' : ((parseInt(mvpK)+parseInt(mvpA))/Math.max(1, parseInt(mvpD))).toFixed(2));
+        const kdaRatio = mvpPlayer.kda?.includes('(') 
+          ? mvpPlayer.kda.split('(')[1].replace(')', '') 
+          : (parseInt(mvpD) === 0 ? 'Perfect' : ((parseInt(mvpK)+parseInt(mvpA))/Math.max(1, parseInt(mvpD))).toFixed(2));
 
-        const dateTag = m.date || '내전';
+        // 날짜/시간 정규화 표시
+        const rawDate = (m.date || '내전').trim();
+        const dateTag = rawDate.split(' ')[0];
+        const timeStr = rawDate.includes(' ') ? rawDate.split(' ')[1] : '';
 
         // AI-Score 색상 뱃지
         let scoreBg = "bg-rose-600/90 text-white";
@@ -3069,107 +3080,190 @@ function renderMatchHistory() {
         }`;
 
         card.innerHTML = `
-          <!-- 1. 요약 헤더 바 -->
+          <!-- 🌟 요약 헤더 (DeepLoL 가로형 5개 고정 섹션) -->
           <div onclick="toggleMatchDetail('${matchSafeId}')" class="p-3.5 sm:px-5 flex items-center justify-between gap-3 sm:gap-6 cursor-pointer select-none">
-            <div class="flex flex-col justify-center min-w-[75px] sm:min-w-[95px] shrink-0 border-r border-slate-700/50 pr-2 sm:pr-4">
-              <span class="font-extrabold text-xs sm:text-sm text-slate-200">${dateTag}</span>
+            
+            <!-- 1. 경기 일시 / 승패 / 진행시간 (너비 고정: 100px) -->
+            <div class="flex flex-col justify-center w-[100px] shrink-0 border-r border-slate-700/50 pr-2 sm:pr-4">
+              <span class="font-extrabold text-xs sm:text-sm text-slate-200 whitespace-nowrap">${dateTag}</span>
+              ${timeStr ? `<span class="text-[10px] text-slate-400 font-mono">${timeStr}</span>` : ''}
               <div class="mt-1 flex items-center gap-1.5">
-                <span class="font-black text-xs ${isBlueWin ? 'text-blue-400' : 'text-rose-400'}">
+                <span class="font-black text-xs ${isBlueWin ? 'text-blue-400' : 'text-rose-400'} whitespace-nowrap">
                   ${m.winner === 'BLUE' ? '블루 승리' : '레드 승리'}
                 </span>
               </div>
-              <span class="text-[10px] text-slate-400 mt-0.5">${m.duration || '30분'}</span>
+              <span class="text-[10px] text-slate-400 mt-0.5 whitespace-nowrap">${m.duration || '30분'}</span>
             </div>
 
-            <!-- MVP 요약 -->
-            <div class="flex items-center gap-2.5 sm:gap-3.5 shrink-0 w-[140px] sm:w-[160px]">
+            <!-- 2. MVP 챔피언 사각 아이콘 & KDA & 이름 (너비 고정: 170px) -->
+            <div class="flex items-center gap-3 shrink-0 w-[170px]">
               <div class="relative shrink-0">
-                <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl overflow-hidden border-2 ${isBlueWin ? 'border-blue-500' : 'border-rose-500'} bg-slate-900 shrink-0">
-                  ${mvpChampIcon ? `<img src="${mvpChampIcon}" alt="${mvpChampKo}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center font-black text-amber-400 text-xs">${mvpChampKo.slice(0,2)}</div>`}
+                <div class="w-12 h-12 sm:w-13 sm:h-13 rounded-2xl overflow-hidden border-2 ${isBlueWin ? 'border-blue-500' : 'border-rose-500'} bg-slate-900 shadow">
+                  ${mvpChampIcon 
+                    ? `<img src="${mvpChampIcon}" alt="${mvpChampKo}" class="w-full h-full object-cover" onerror="this.onerror=null; this.src='https://opgg-static.akamaized.net/meta/images/lol/latest/champion/${mvpEn}.png';">` 
+                    : `<div class="w-full h-full flex items-center justify-center font-black text-amber-400 text-xs">${mvpChampKo.slice(0,2)}</div>`
+                  }
                 </div>
                 <span class="absolute -bottom-1 -right-1 px-1 py-0.2 rounded bg-gray-950/90 text-amber-400 text-[9px] font-black border border-amber-500/40">MVP</span>
               </div>
               <div class="space-y-0.5 min-w-0 flex-1">
                 <div class="text-xs sm:text-sm font-black text-slate-100 flex items-center gap-1">
-                  <span>${mvpK}</span> / <span class="text-rose-500">${mvpD}</span> / <span>${mvpA}</span>
+                  <span>${mvpK}</span> <span class="text-slate-500">/</span> 
+                  <span class="text-rose-500">${mvpD}</span> <span class="text-slate-500">/</span> 
+                  <span>${mvpA}</span>
                 </div>
-                <div class="text-[10px] text-slate-400 font-semibold"><strong class="text-slate-200">${kdaRatio}</strong> KDA</div>
-                <div class="text-[10px] text-amber-400/90 font-extrabold truncate w-full" title="${mvpName}">${mvpName.split('#')[0]}</div>
+                <div class="text-[10px] text-slate-400 font-semibold truncate"><strong class="text-slate-200">${kdaRatio}</strong> KDA</div>
+                <div class="text-[10px] text-amber-400/90 font-extrabold truncate w-full" title="${mvpName}">
+                  ${(summoners.find(s => isSameSummonerName(s.name, mvpName))?.description) || mvpName.split('#')[0]}
+                </div>
               </div>
             </div>
 
-            <!-- AI-Score -->
-            <div class="flex flex-col items-center justify-center shrink-0 px-2 sm:px-4 border-x border-slate-700/50">
+            <!-- 3. AI-Score 뱃지 (너비 고정: 90px) -->
+            <div class="flex flex-col items-center justify-center shrink-0 w-[90px] border-x border-slate-700/50 px-2">
               <span class="text-[9px] font-extrabold text-slate-400 uppercase tracking-tight">AI-Score</span>
               <span class="px-2.5 py-0.5 rounded-lg text-xs sm:text-sm font-black my-0.5 ${scoreBg}">${mvpScore}</span>
-              <span class="text-[9px] font-bold text-amber-400">👑 MVP 1등</span>
+              <span class="text-[9px] font-bold text-amber-400 whitespace-nowrap">👑 MVP 1등</span>
             </div>
 
-            <!-- 10인 소환사 미니 명단 -->
-            <div class="hidden md:grid grid-cols-2 gap-x-4 gap-y-1 min-w-[280px] lg:min-w-[340px] text-[11px] py-1 shrink-0">
-              <div class="space-y-1">
-                ${bluePlayers.map(p => `<div class="truncate font-semibold ${isSameSummonerName(p.name, mvpName) ? 'text-amber-400 font-black' : 'text-slate-300'}">${p.name.split('#')[0]}</div>`).join('')}
+            <!-- 4. 🌟 [복구 완료] 10인 소환사 + 원형 챔피언 사진 리스트 (2열 그리드) -->
+            <div class="hidden md:grid grid-cols-2 gap-x-6 gap-y-1.5 flex-1 min-w-[320px] max-w-[460px] text-[11px] py-1">
+              <!-- 블루팀 5명 -->
+              <div class="space-y-1.5 min-w-0">
+                ${bluePlayers.map(p => {
+                  const pChamp = p.champion || p.most || '자유픽';
+                  const pChampKo = getChampionKoName(pChamp);
+                  const pIcon = getChampionIconUrl(pChampKo);
+                  const pEn = CHAMPION_NAME_KO_TO_EN[pChampKo] || pChampKo;
+                  const pRealName = (summoners.find(s => isSameSummonerName(s.name, p.name))?.description) || p.name.split('#')[0];
+                  const isMvp = isSameSummonerName(p.name, mvpName);
+                  return `
+                    <div class="flex items-center gap-2 truncate">
+                      <div class="w-4 h-4 rounded-full overflow-hidden bg-slate-800 border border-blue-500/40 shrink-0">
+                        ${pIcon ? `<img src="${pIcon}" alt="${pChampKo}" class="w-full h-full object-cover" onerror="this.onerror=null; this.src='https://opgg-static.akamaized.net/meta/images/lol/latest/champion/${pEn}.png';">` : ''}
+                      </div>
+                      <span class="truncate font-semibold ${isMvp ? 'text-amber-400 font-black' : 'text-slate-300'}">${pRealName}</span>
+                    </div>
+                  `;
+                }).join('')}
               </div>
-              <div class="space-y-1">
-                ${redPlayers.map(p => `<div class="truncate font-semibold ${isSameSummonerName(p.name, mvpName) ? 'text-amber-400 font-black' : 'text-slate-300'}">${p.name.split('#')[0]}</div>`).join('')}
+
+              <!-- 레드팀 5명 -->
+              <div class="space-y-1.5 min-w-0">
+                ${redPlayers.map(p => {
+                  const pChamp = p.champion || p.most || '자유픽';
+                  const pChampKo = getChampionKoName(pChamp);
+                  const pIcon = getChampionIconUrl(pChampKo);
+                  const pEn = CHAMPION_NAME_KO_TO_EN[pChampKo] || pChampKo;
+                  const pRealName = (summoners.find(s => isSameSummonerName(s.name, p.name))?.description) || p.name.split('#')[0];
+                  const isMvp = isSameSummonerName(p.name, mvpName);
+                  return `
+                    <div class="flex items-center gap-2 truncate">
+                      <div class="w-4 h-4 rounded-full overflow-hidden bg-slate-800 border border-red-500/40 shrink-0">
+                        ${pIcon ? `<img src="${pIcon}" alt="${pChampKo}" class="w-full h-full object-cover" onerror="this.onerror=null; this.src='https://opgg-static.akamaized.net/meta/images/lol/latest/champion/${pEn}.png';">` : ''}
+                      </div>
+                      <span class="truncate font-semibold ${isMvp ? 'text-amber-400 font-black' : 'text-slate-300'}">${pRealName}</span>
+                    </div>
+                  `;
+                }).join('')}
               </div>
             </div>
 
+            <!-- 5. 🌟 [복구 완료] 우측 삭제 버튼 및 아코디언 토글 화살표 버튼 -->
             <div class="flex items-center gap-2 sm:gap-3 shrink-0">
-              <button onclick="event.stopPropagation(); deleteSingleMatch('${matchSafeId}')" class="p-1.5 rounded-lg text-slate-500 hover:text-rose-500 hover:bg-rose-500/10 transition" title="삭제"><i class="fa-solid fa-trash-can text-xs"></i></button>
+              <button onclick="event.stopPropagation(); deleteSingleMatch('${matchSafeId}')" class="p-1.5 rounded-lg text-slate-500 hover:text-rose-500 hover:bg-rose-500/10 transition cursor-pointer" title="이 경기 기록만 삭제">
+                <i class="fa-solid fa-trash-can text-xs"></i>
+              </button>
               <div id="match-chevron-${matchSafeId}" class="w-7 h-7 rounded-xl bg-slate-800/80 border border-slate-700/60 flex items-center justify-center text-slate-400 transition-transform duration-200">
                 <i class="fa-solid fa-chevron-down text-xs"></i>
               </div>
             </div>
+
           </div>
 
-          <!-- 2. 상세 펼침 내용 (DeepLoL 스코어보드 표 - AI-Score, KDA, 딜량, CS 포함) -->
+          <!-- 🌟 상세 내용 (클릭 시 펼쳐지는 10인 KDA/딜량/CS/티어 상세 테이블) -->
           <div id="match-detail-${matchSafeId}" class="hidden border-t border-slate-800/80 p-3 sm:p-4 bg-black/40 space-y-2">
+            
             <!-- 블루팀 상세 -->
             <div class="rounded-xl overflow-hidden ${isBlueWin ? 'bg-blue-950/30 border border-blue-900/40' : 'bg-slate-900/50 border border-slate-800/40'}">
               <div class="px-3 py-1.5 text-[10px] font-black flex justify-between ${isBlueWin ? 'text-blue-400 bg-blue-950/50' : 'text-slate-400 bg-slate-900/80'}">
-                <span>${isBlueWin ? '👑 승리 (블루팀)' : '패배 (블루팀)'}</span><span>총 피해량 및 기여도</span>
+                <span>${isBlueWin ? '👑 승리 (블루팀)' : '패배 (블루팀)'}</span>
+                <span>총 피해량 및 기여도</span>
               </div>
               <div class="divide-y divide-slate-800/40 text-[11px]">
-                ${bluePlayers.map(p => `
-                  <div class="px-3 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-3 hover:bg-white/5 transition">
-                    <div class="flex items-center gap-2.5 min-w-[200px] truncate">
-                      <span class="font-bold text-slate-200 truncate">${p.name}</span>
-                      <span class="text-amber-400 text-[10px]">챔프: ${getChampionKoName(p.champion || p.most)}</span>
+                ${bluePlayers.map(p => {
+                  const pChampKo = getChampionKoName(p.champion || p.most || '챔피언');
+                  const pChampIcon = getChampionIconUrl(p.champion || p.most);
+                  const pOfficial = summoners.find(s => isSameSummonerName(s.name, p.name));
+                  const pDisplayName = pOfficial?.name || p.name;
+                  const pDesc = pOfficial?.description ? ` (${pOfficial.description})` : '';
+                  const pEn = CHAMPION_NAME_KO_TO_EN[pChampKo] || pChampKo;
+                  return `
+                    <div class="px-3 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-3 hover:bg-white/5 transition">
+                      <div class="flex items-center gap-2.5 min-w-[200px] truncate">
+                        ${(p.role && p.role !== 'UNKNOWN') ? `<span class="w-7 font-bold text-[9px] text-slate-400 text-center shrink-0 uppercase">${p.role}</span>` : ''}
+                        <div class="w-6 h-6 rounded-lg overflow-hidden bg-slate-800 border border-slate-700 shrink-0 flex items-center justify-center">
+                          ${pChampIcon 
+                            ? `<img src="${pChampIcon}" alt="${pChampKo}" class="w-full h-full object-cover" onerror="this.onerror=null; this.src='https://opgg-static.akamaized.net/meta/images/lol/latest/champion/${pEn}.png';">` 
+                            : `<span class="text-[9px] font-bold text-amber-400">${pChampKo.slice(0, 2)}</span>`
+                          }
+                        </div>
+                        <span class="font-bold text-slate-200 truncate">${pDisplayName}<span class="text-amber-400 text-[10px]">${pDesc}</span></span>
+                        <span class="tier-badge tier-${getSummonerRealTier(p).toLowerCase()}">${getSummonerRealTier(p)}</span>
+                      </div>
+                      <div class="flex items-center gap-3 sm:gap-5 text-[10px] text-slate-400 justify-between sm:justify-end">
+                        <span>AI-Score: <strong class="text-amber-400 font-bold">${p.aiScore || 50}점</strong></span>
+                        <span>KDA: <strong class="text-slate-200">${p.kda || '0/0/0'}</strong></span>
+                        <span>딜량: <strong class="text-rose-400">${p.damage || '-'}</strong></span>
+                        <span>CS: <strong class="text-slate-300">${p.cs || '-'}</strong></span>
+                        <span>챔프: <strong class="text-slate-300">${pChampKo}</strong></span>
+                      </div>
                     </div>
-                    <div class="flex items-center gap-3 sm:gap-5 text-[10px] text-slate-400 justify-between sm:justify-end">
-                      <span>AI-Score: <strong class="text-amber-400 font-bold">${p.aiScore || 50}점</strong></span>
-                      <span>KDA: <strong class="text-slate-200">${p.kda || '0/0/0'}</strong></span>
-                      <span>딜량: <strong class="text-rose-400">${p.damage || '-'}</strong></span>
-                      <span>CS: <strong class="text-slate-300">${p.cs || '-'}</strong></span>
-                    </div>
-                  </div>
-                `).join('')}
+                  `;
+                }).join('')}
               </div>
             </div>
 
             <!-- 레드팀 상세 -->
             <div class="rounded-xl overflow-hidden ${!isBlueWin ? 'bg-red-950/30 border border-red-900/40' : 'bg-slate-900/50 border border-slate-800/40'}">
               <div class="px-3 py-1.5 text-[10px] font-black flex justify-between ${!isBlueWin ? 'text-rose-400 bg-red-950/50' : 'text-slate-400 bg-slate-900/80'}">
-                <span>${!isBlueWin ? '👑 승리 (레드팀)' : '패배 (레드팀)'}</span><span>총 피해량 및 기여도</span>
+                <span>${!isBlueWin ? '👑 승리 (레드팀)' : '패배 (레드팀)'}</span>
+                <span>총 피해량 및 기여도</span>
               </div>
               <div class="divide-y divide-slate-800/40 text-[11px]">
-                ${redPlayers.map(p => `
-                  <div class="px-3 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-3 hover:bg-white/5 transition">
-                    <div class="flex items-center gap-2.5 min-w-[200px] truncate">
-                      <span class="font-bold text-slate-200 truncate">${p.name}</span>
-                      <span class="text-amber-400 text-[10px]">챔프: ${getChampionKoName(p.champion || p.most)}</span>
+                ${redPlayers.map(p => {
+                  const pChampKo = getChampionKoName(p.champion || p.most || '챔피언');
+                  const pChampIcon = getChampionIconUrl(p.champion || p.most);
+                  const pOfficial = summoners.find(s => isSameSummonerName(s.name, p.name));
+                  const pDisplayName = pOfficial?.name || p.name;
+                  const pDesc = pOfficial?.description ? ` (${pOfficial.description})` : '';
+                  const pEn = CHAMPION_NAME_KO_TO_EN[pChampKo] || pChampKo;
+                  return `
+                    <div class="px-3 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-3 hover:bg-white/5 transition">
+                      <div class="flex items-center gap-2.5 min-w-[200px] truncate">
+                        ${(p.role && p.role !== 'UNKNOWN') ? `<span class="w-7 font-bold text-[9px] text-slate-400 text-center shrink-0 uppercase">${p.role}</span>` : ''}
+                        <div class="w-6 h-6 rounded-lg overflow-hidden bg-slate-800 border border-slate-700 shrink-0 flex items-center justify-center">
+                          ${pChampIcon 
+                            ? `<img src="${pChampIcon}" alt="${pChampKo}" class="w-full h-full object-cover" onerror="this.onerror=null; this.src='https://opgg-static.akamaized.net/meta/images/lol/latest/champion/${pEn}.png';">` 
+                            : `<span class="text-[9px] font-bold text-amber-400">${pChampKo.slice(0, 2)}</span>`
+                          }
+                        </div>
+                        <span class="font-bold text-slate-200 truncate">${pDisplayName}<span class="text-amber-400 text-[10px]">${pDesc}</span></span>
+                        <span class="tier-badge tier-${getSummonerRealTier(p).toLowerCase()}">${getSummonerRealTier(p)}</span>
+                      </div>
+                      <div class="flex items-center gap-3 sm:gap-5 text-[10px] text-slate-400 justify-between sm:justify-end">
+                        <span>AI-Score: <strong class="text-amber-400 font-bold">${p.aiScore || 50}점</strong></span>
+                        <span>KDA: <strong class="text-slate-200">${p.kda || '0/0/0'}</strong></span>
+                        <span>딜량: <strong class="text-rose-400">${p.damage || '-'}</strong></span>
+                        <span>CS: <strong class="text-slate-300">${p.cs || '-'}</strong></span>
+                        <span>챔프: <strong class="text-slate-300">${pChampKo}</strong></span>
+                      </div>
                     </div>
-                    <div class="flex items-center gap-3 sm:gap-5 text-[10px] text-slate-400 justify-between sm:justify-end">
-                      <span>AI-Score: <strong class="text-amber-400 font-bold">${p.aiScore || 50}점</strong></span>
-                      <span>KDA: <strong class="text-slate-200">${p.kda || '0/0/0'}</strong></span>
-                      <span>딜량: <strong class="text-rose-400">${p.damage || '-'}</strong></span>
-                      <span>CS: <strong class="text-slate-300">${p.cs || '-'}</strong></span>
-                    </div>
-                  </div>
-                `).join('')}
+                  `;
+                }).join('')}
               </div>
             </div>
+
           </div>
         `;
         container.appendChild(card);
