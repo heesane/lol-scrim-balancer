@@ -726,6 +726,7 @@
           </button>
         </div>
         <div id="match-history-list" class="space-y-4"></div>
+        <div id="match-history-pagination" class="flex items-center justify-center gap-2 pt-4 select-none"></div>
       </section>
 
       <!-- SECTION 4: 리플레이 파일 보관함 (REPLAY) -->
@@ -3001,46 +3002,92 @@ let summonerSortKey = 'mmr';
       }
     }
 
-// 🌟 DEEPLOL 실측 아코디언 매치 히스토리 렌더러 (최신 시간순 자동 정렬 + 원형 챔피언 사진 + 레이아웃 고정)
+    // 🌟 DEEPLOL 실측 아코디언 매치 히스토리 렌더러 (최신 시간순 자동 정렬 + 요약 접기/펼치기)
+        let matchHistoryPage = 1;
+    const MATCHES_PER_PAGE = 5;
+
+    // 🌟 페이지 이동 헬퍼 함수
+    function changeMatchHistoryPage(newPage) {
+      matchHistoryPage = newPage;
+      renderMatchHistory();
+      const section = document.getElementById('tab-content-history');
+      if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // 🌟 DEEPLOL 실측 아코디언 매치 히스토리 렌더러 (정밀 시간순 정렬 + 10인 챔피언 원형 아이콘 + 1, 2, 3 페이지네이션)
     function renderMatchHistory() {
       const container = document.getElementById('match-history-list');
+      const paginationEl = document.getElementById('match-history-pagination');
       if (!container) return;
       container.innerHTML = '';
-      document.getElementById('nav-history-count').textContent = matchHistory.length;
+      if (paginationEl) paginationEl.innerHTML = '';
+      
+      const navCountEl = document.getElementById('nav-history-count');
+      if (navCountEl) navCountEl.textContent = matchHistory.length;
 
       if (matchHistory.length === 0) {
         container.innerHTML = `<div class="p-12 text-center text-xs text-slate-400 bg-white dark:bg-[#121721] rounded-2xl border border-slate-200 dark:border-slate-800">기록된 내전 매치가 없습니다.</div>`;
         return;
       }
 
-      // 1. 🌟 [날짜 및 시간순 완벽 내림차순 정렬]
+      // 1. 🌟 [정밀 시간순 완벽 정렬] 2026-11-06 00:07, 11.05 21:00 등 모든 규격을 파싱해 분 단위 타임스탬프로 내림차순 정렬
       matchHistory.sort((a, b) => {
-        const parseToTimestamp = (item) => {
+        const getExactTimestamp = (item) => {
           if (!item) return 0;
-          if (item.dateKey && !isNaN(Date.parse(item.dateKey))) {
-            return Date.parse(item.dateKey);
+
+          // ISO 또는 YYYY-MM-DD HH:mm 직접 파싱
+          const directParse = Date.parse(item.dateKey || item.date);
+          if (!isNaN(directParse) && String(item.date).includes('-') && String(item.date).length >= 10) {
+            return directParse;
           }
-          const raw = (item.date || '').toString().trim();
-          const match = raw.match(/(\d{1,2})[\.\-\/월]\s*(\d{1,2})/);
-          if (match) {
-            const m = parseInt(match[1], 10) - 1;
-            const d = parseInt(match[2], 10);
-            const timeMatch = raw.match(/(\d{1,2}):(\d{1,2})/);
-            const hour = timeMatch ? parseInt(timeMatch[1], 10) : 0;
-            const min = timeMatch ? parseInt(timeMatch[2], 10) : 0;
-            return new Date(2026, m, d, hour, min).getTime();
+
+          const raw = `${item.dateKey || ''} ${item.date || ''}`.trim();
+          
+          const ymdMatch = raw.match(/(\d{4})[\.\-\/](\d{1,2})[\.\-\/](\d{1,2})/);
+          const mdMatch = raw.match(/(\d{1,2})[\.\-\/월]\s*(\d{1,2})/);
+          const timeMatch = raw.match(/(\d{1,2}):(\d{1,2})/);
+
+          let year = 2026;
+          let month = 10; // 0-based index
+          let day = 1;
+          let hour = 0;
+          let min = 0;
+
+          if (ymdMatch) {
+            year = parseInt(ymdMatch[1], 10);
+            month = parseInt(ymdMatch[2], 10) - 1;
+            day = parseInt(ymdMatch[3], 10);
+          } else if (mdMatch) {
+            month = parseInt(mdMatch[1], 10) - 1;
+            day = parseInt(mdMatch[2], 10);
           }
-          const parsed = Date.parse(raw);
-          if (!isNaN(parsed)) return parsed;
+
+          if (timeMatch) {
+            hour = parseInt(timeMatch[1], 10);
+            min = parseInt(timeMatch[2], 10);
+          }
+
+          const computed = new Date(year, month, day, hour, min).getTime();
+          if (!isNaN(computed) && (ymdMatch || mdMatch)) return computed;
+
           return parseInt(item.id?.replace(/\D/g, '') || '0', 10);
         };
 
-        return parseToTimestamp(b) - parseToTimestamp(a);
+        return getExactTimestamp(b) - getExactTimestamp(a);
       });
 
-      matchHistory.forEach((m, mIdx) => {
+      // 2. 🌟 [페이지네이션 슬라이싱 계산]
+      const totalPages = Math.ceil(matchHistory.length / MATCHES_PER_PAGE) || 1;
+      if (matchHistoryPage > totalPages) matchHistoryPage = totalPages;
+      if (matchHistoryPage < 1) matchHistoryPage = 1;
+
+      const startIndex = (matchHistoryPage - 1) * MATCHES_PER_PAGE;
+      const paginatedMatches = matchHistory.slice(startIndex, startIndex + MATCHES_PER_PAGE);
+
+      // 3. 카드 렌더링
+      paginatedMatches.forEach((m, mIdx) => {
         const isBlueWin = (m.winner === 'BLUE');
-        const matchSafeId = m.id || m.matchId || `m-${mIdx}`;
+        const matchSafeId = m.id || m.matchId || `m-${startIndex + mIdx}`;
         const bluePlayers = m.blue || [];
         const redPlayers = m.red || [];
         const allPlayers = [...bluePlayers, ...redPlayers];
@@ -3063,7 +3110,7 @@ let summonerSortKey = 'mmr';
           ? mvpPlayer.kda.split('(')[1].replace(')', '') 
           : (parseInt(mvpD) === 0 ? 'Perfect' : ((parseInt(mvpK)+parseInt(mvpA))/Math.max(1, parseInt(mvpD))).toFixed(2));
 
-        // 날짜/시간 정규화 표시
+        // 날짜 라벨
         const rawDate = (m.date || '내전').trim();
         const dateTag = rawDate.split(' ')[0];
         const timeStr = rawDate.includes(' ') ? rawDate.split(' ')[1] : '';
@@ -3080,7 +3127,7 @@ let summonerSortKey = 'mmr';
         }`;
 
         card.innerHTML = `
-          <!-- 🌟 요약 헤더 (DeepLoL 가로형 5개 고정 섹션) -->
+          <!-- 🌟 요약 헤더 (DeepLoL 스타일 가로형 5개 고정 섹션) -->
           <div onclick="toggleMatchDetail('${matchSafeId}')" class="p-3.5 sm:px-5 flex items-center justify-between gap-3 sm:gap-6 cursor-pointer select-none">
             
             <!-- 1. 경기 일시 / 승패 / 진행시간 (너비 고정: 100px) -->
@@ -3126,7 +3173,7 @@ let summonerSortKey = 'mmr';
               <span class="text-[9px] font-bold text-amber-400 whitespace-nowrap">👑 MVP 1등</span>
             </div>
 
-            <!-- 4. 🌟 [복구 완료] 10인 소환사 + 원형 챔피언 사진 리스트 (2열 그리드) -->
+            <!-- 4. 🌟 10인 소환사 + 원형 챔피언 사진 리스트 (2열 그리드) -->
             <div class="hidden md:grid grid-cols-2 gap-x-6 gap-y-1.5 flex-1 min-w-[320px] max-w-[460px] text-[11px] py-1">
               <!-- 블루팀 5명 -->
               <div class="space-y-1.5 min-w-0">
@@ -3169,7 +3216,7 @@ let summonerSortKey = 'mmr';
               </div>
             </div>
 
-            <!-- 5. 🌟 [복구 완료] 우측 삭제 버튼 및 아코디언 토글 화살표 버튼 -->
+            <!-- 5. 🌟 우측 삭제 버튼 및 아코디언 토글 화살표 버튼 -->
             <div class="flex items-center gap-2 sm:gap-3 shrink-0">
               <button onclick="event.stopPropagation(); deleteSingleMatch('${matchSafeId}')" class="p-1.5 rounded-lg text-slate-500 hover:text-rose-500 hover:bg-rose-500/10 transition cursor-pointer" title="이 경기 기록만 삭제">
                 <i class="fa-solid fa-trash-can text-xs"></i>
@@ -3268,6 +3315,46 @@ let summonerSortKey = 'mmr';
         `;
         container.appendChild(card);
       });
+
+      // 4. 🌟 [1, 2, 3 페이지 번호 버튼 렌더링]
+      if (paginationEl && totalPages > 1) {
+        let pageBtnsHtml = '';
+
+        // 이전 페이지 버튼
+        pageBtnsHtml += `
+          <button onclick="changeMatchHistoryPage(${matchHistoryPage - 1})" 
+                  ${matchHistoryPage === 1 ? 'disabled class="opacity-30 cursor-not-allowed"' : 'class="hover:bg-slate-200 dark:hover:bg-slate-800"'} 
+                  class="w-8 h-8 rounded-lg border border-slate-200 dark:border-slate-800 flex items-center justify-center text-xs font-bold transition">
+            <i class="fa-solid fa-chevron-left"></i>
+          </button>
+        `;
+
+        // 숫자 버튼 (1, 2, 3 ...)
+        for (let i = 1; i <= totalPages; i++) {
+          const isActive = (i === matchHistoryPage);
+          pageBtnsHtml += `
+            <button onclick="changeMatchHistoryPage(${i})" 
+                    class="w-8 h-8 rounded-lg border text-xs font-black transition ${
+                      isActive 
+                        ? 'bg-amber-500 border-amber-500 text-gray-950 shadow-md shadow-amber-500/20' 
+                        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121721] text-slate-600 dark:text-gray-300 hover:border-amber-400'
+                    }">
+              ${i}
+            </button>
+          `;
+        }
+
+        // 다음 페이지 버튼
+        pageBtnsHtml += `
+          <button onclick="changeMatchHistoryPage(${matchHistoryPage + 1})" 
+                  ${matchHistoryPage === totalPages ? 'disabled class="opacity-30 cursor-not-allowed"' : 'class="hover:bg-slate-200 dark:hover:bg-slate-800"'} 
+                  class="w-8 h-8 rounded-lg border border-slate-200 dark:border-slate-800 flex items-center justify-center text-xs font-bold transition">
+            <i class="fa-solid fa-chevron-right"></i>
+          </button>
+        `;
+
+        paginationEl.innerHTML = pageBtnsHtml;
+      }
     }
 
 
