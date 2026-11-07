@@ -1923,8 +1923,12 @@ function syncStatsFromHistory() {
     }
 
 function getPlayerMMR(p) {
-      if (!p) return { mmr: 0, scrimWeightPct: 0 };
-      // 1. 기초 체급 환산 (솔랭 50% + 최고티어 30% + 자랭 20%)
+      // MMR 설계: 상한선 없음, 절대 하한선 400pt.
+      // 승패 누적이 주된 변화 요인이며, 폼 점수는 보조 보정으로 제한한다.
+      const MMR_FLOOR = 400;
+      if (!p) return { mmr: MMR_FLOOR, scrimWeightPct: 0 };
+
+      // 1. 기초 체급 환산 (솔랭/자랭/최고 티어 또는 관리자 지정 본캐 티어)
       const soloPts = parseRankPoints(p.soloTier);
       const flexPts = parseRankPoints(p.flexTier);
       const peakPts = parseRankPoints(p.peakDetail || p.peakTier || p.tier);
@@ -1935,7 +1939,7 @@ function getPlayerMMR(p) {
       const hasFlex = fGames > 0 && !((p.flexTier || '').includes('언랭'));
 
       let rawRankMMR = 0;
-      // [히든 체급 설정 반영]: 부캐 양학 방지용 본캐 티어가 설정되어 있으면 우선 적용
+      // 히든 체급 설정이 있으면 해당 본캐 티어를 기본 MMR로 사용
       if (p.customBaseTier && p.customBaseTier.trim()) {
         rawRankMMR = parseRankPoints(p.customBaseTier.trim());
       } else if (hasSolo && hasFlex) {
@@ -1949,30 +1953,39 @@ function getPlayerMMR(p) {
         rawRankMMR = (parseRankPoints(p.tier) * 0.70) + (peakPts * 0.30);
       }
 
-      const scrimWins = parseInt(p.wins || 0, 10);
-      const scrimLosses = parseInt(p.losses || 0, 10);
+      if (!Number.isFinite(rawRankMMR)) rawRankMMR = MMR_FLOOR;
+      rawRankMMR = Math.max(MMR_FLOOR, rawRankMMR);
+
+      const scrimWins = Math.max(0, parseInt(p.wins || 0, 10) || 0);
+      const scrimLosses = Math.max(0, parseInt(p.losses || 0, 10) || 0);
       const totalScrimGames = scrimWins + scrimLosses;
 
-      // 내전 0판은 기초 체급 100%
+      // 내전 0판은 기본 체급을 사용하되 하한선은 항상 보장
       if (totalScrimGames === 0) {
-        return { mmr: Math.round(rawRankMMR), scrimWeightPct: 0 };
+        return { mmr: Math.max(MMR_FLOOR, Math.round(rawRankMMR)), scrimWeightPct: 0 };
       }
 
-      // 승리 시 +60pt, 패배 시 -60pt 정직한 누적
+      // 순승 1회당 +60 원점수, 순패 1회당 -60 원점수.
+      // 내전 실적 비중 70%가 적용되어 최종 MMR에는 순승/순패당 약 42pt 반영된다.
       const netWins = scrimWins - scrimLosses;
       const winScoreImpact = netWins * 60;
 
-      // 실측 딥롤 스코어 평균 55점 기준 가산/감점
-      const formImpact = ((p.formScore || 55) - 55) * 4.0;
-      const carryBonusImpact = Math.min(50, p.carryBonus || 0);
+      // 최근 폼은 보조 지표로만 사용한다. 기존 ×4는 승패 영향을 압도할 수 있어 ±40으로 제한.
+      const parsedFormScore = Number(p.formScore);
+      const formScore = Number.isFinite(parsedFormScore) ? Math.max(0, Math.min(100, parsedFormScore)) : 55;
+      const formImpact = Math.max(-40, Math.min(40, formScore - 55));
 
-      // 내전 실적(70%) + 기초 체급(30%) 융합
-      const pureScrimScore = rawRankMMR + winScoreImpact + formImpact + carryBonusImpact;
-      const compositeMMR = (pureScrimScore * 0.70) + (rawRankMMR * 0.30);
+      // 캐리 보너스는 기존 정책대로 최대 +50pt까지만 인정한다.
+      const parsedCarryBonus = Number(p.carryBonus);
+      const carryBonusImpact = Number.isFinite(parsedCarryBonus)
+        ? Math.max(0, Math.min(50, parsedCarryBonus))
+        : 0;
 
-      // 🌟 상하한선 락 해제: 실제 연승 및 실력에 맞춰 MMR 상한선 없이 상승
+      // 최종 MMR = 기본 체급 + 내전 영향(70%).
+      // 상한은 두지 않아 강한 플레이어는 계속 상승하고, 연패자는 하한선까지 하락할 수 있다.
+      const compositeMMR = rawRankMMR + ((winScoreImpact + formImpact + carryBonusImpact) * 0.70);
       return {
-        mmr: Math.round(compositeMMR),
+        mmr: Math.max(MMR_FLOOR, Math.round(compositeMMR)),
         scrimWeightPct: 70
       };
     }
