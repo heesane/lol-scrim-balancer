@@ -4459,27 +4459,58 @@ function resetMatchHistory() {
 
       function launchBalancerWithSchedule() {
       const sched = scrimSchedules[selectedSchedDateKey];
-      if (!sched || !sched.participants) return;
-      
-      // 'JOIN(참가)' 상태인 인원만 필터링
-      const confirmed = sched.participants.filter(p => p.status === 'JOIN');
-      if (confirmed.length < 10) {
-        showToast('최소 10명의 참가 확정 인원이 있어야 밸런서로 연동할 수 있습니다.', 'error');
+      if (!sched || !Array.isArray(sched.participants)) {
+        showToast('선택된 일정의 참가자 명단을 찾을 수 없습니다.', 'error');
         return;
       }
 
-      // 🌟 ID와 유연한 이름 비교(isSameSummonerName)를 통해 정확한 멤버 객체를 매핑
-      const matchedIds = confirmed.slice(0, 10).map(p => {
-        const found = summoners.find(s => s.id === p.id || isSameSummonerName(s.name, p.name));
-        return found ? found.id : null;
-      }).filter(Boolean);
+      // 참가 확정(JOIN) 상태인 인원만 대상으로 한다.
+      const confirmed = sched.participants.filter(p => p && p.status === 'JOIN');
+      if (confirmed.length < 10) {
+        showToast(`참가 확정 인원이 ${confirmed.length}명입니다. 10명이 필요합니다.`, 'error');
+        return;
+      }
 
-      selectedPlayerIds = new Set(matchedIds);
+      // ID 우선 매칭 후 이름을 보조로 사용한다. 매칭 실패/중복을 조용히 버리지 않는다.
+      const matchedPlayers = [];
+      const unmatchedNames = [];
+      for (const participant of confirmed) {
+        if (matchedPlayers.length >= 10) break;
+        const found = summoners.find(s =>
+          (participant.id && s.id === participant.id) ||
+          (participant.name && isSameSummonerName(s.name, participant.name))
+        );
+        if (!found) {
+          unmatchedNames.push(participant.name || participant.id || '이름 없는 참가자');
+          continue;
+        }
+        if (matchedPlayers.some(s => s.id === found.id)) continue;
+        matchedPlayers.push(found);
+      }
+
+      if (matchedPlayers.length !== 10) {
+        const detail = unmatchedNames.length ? ` 매칭 실패: ${unmatchedNames.join(', ')}` : '';
+        showToast(`밸런서로 연결된 멤버가 ${matchedPlayers.length}/10명입니다.${detail} 멤버 목록의 소환사명/ID를 확인해 주세요.`, 'error');
+        return;
+      }
+
+      // 중요: 이전 currentMatch가 빈 슬롯을 갖고 있으면 renderSelectionGrid()가
+      // 선택한 10명을 빈 대진표 기준으로 덮어쓸 수 있으므로, 새 대진표 진입 전에 초기화한다.
+      currentMatch = null;
+      balancedCandidates = [];
+      currentCandidateIdx = 0;
+      selectedPlayerIds = new Set(matchedPlayers.map(s => s.id));
+
+      // 이전 대진표가 화면에 남지 않도록 빈 상태 UI로 되돌린다.
+      document.getElementById('balancer-placeholder')?.classList.remove('hidden');
+      document.getElementById('balancer-board')?.classList.add('hidden');
+
       saveLocalData();
       switchTab('balancer');
-      showToast('참가 신청한 10명이 스마트-밸런서에 세팅되었습니다! [스마트 밸런싱 실행]을 누르세요!', 'success');
-    }
+      renderSelectionGrid();
 
+      showToast('참가 확정 10명이 밸런서에 연결되었습니다. [스마트 밸런싱 실행]을 눌러 대진을 생성하세요!', 'success');
+    }
     // ==========================================
     // 👑 관리자 권한 (이준희) 보안 엔진
     // ==========================================
