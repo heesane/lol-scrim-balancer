@@ -1911,7 +1911,7 @@ function syncStatsFromHistory() {
       return tierBase + divBonus + lp;
     }
 
-      function getPlayerMMR(p) {
+function getPlayerMMR(p) {
       if (!p) return { mmr: 0, scrimWeightPct: 0 };
       // 1. 기초 체급 환산 (솔랭 50% + 최고티어 30% + 자랭 20%)
       const soloPts = parseRankPoints(p.soloTier);
@@ -1924,7 +1924,7 @@ function syncStatsFromHistory() {
       const hasFlex = fGames > 0 && !((p.flexTier || '').includes('언랭'));
 
       let rawRankMMR = 0;
-      // 🌟 [히든 체급 설정 반영]: 부캐 양학 방지용 본캐 티어가 설정되어 있으면 우선 적용
+      // [히든 체급 설정 반영]: 부캐 양학 방지용 본캐 티어가 설정되어 있으면 우선 적용
       if (p.customBaseTier && p.customBaseTier.trim()) {
         rawRankMMR = parseRankPoints(p.customBaseTier.trim());
       } else if (hasSolo && hasFlex) {
@@ -1947,11 +1947,11 @@ function syncStatsFromHistory() {
         return { mmr: Math.round(rawRankMMR), scrimWeightPct: 0 };
       }
 
-      // 🌟 [핵심 해결] 승리 시 무조건 +60pt, 패배 시 무조건 -60pt 정직한 누적 (역전 버그 원천 차단)
+      // 승리 시 +60pt, 패배 시 -60pt 정직한 누적
       const netWins = scrimWins - scrimLosses;
       const winScoreImpact = netWins * 60;
 
-      // 🌟 실측 딥롤 스코어 평균 55점 기준 (55점 초과 시 가산, 미달 시 감점)
+      // 실측 딥롤 스코어 평균 55점 기준 가산/감점
       const formImpact = ((p.formScore || 55) - 55) * 4.0;
       const carryBonusImpact = Math.min(50, p.carryBonus || 0);
 
@@ -1959,12 +1959,9 @@ function syncStatsFromHistory() {
       const pureScrimScore = rawRankMMR + winScoreImpact + formImpact + carryBonusImpact;
       const compositeMMR = (pureScrimScore * 0.70) + (rawRankMMR * 0.30);
 
-      // 기초 체급 대비 ±450pt 상하한선 락 (에메랄드가 마스터를 뚫거나 실버로 추락 방지)
-      const minLimit = Math.round(rawRankMMR - 450);
-      const maxLimit = Math.round(rawRankMMR + 450);
-
+      // 🌟 상하한선 락 해제: 실제 연승 및 실력에 맞춰 MMR 상한선 없이 상승
       return {
-        mmr: Math.max(minLimit, Math.min(maxLimit, Math.round(compositeMMR))),
+        mmr: Math.round(compositeMMR),
         scrimWeightPct: 70
       };
     }
