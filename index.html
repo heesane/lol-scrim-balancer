@@ -538,7 +538,7 @@
                 </span>
               </div>
               <p class="text-xs text-slate-500 dark:text-gray-400 mt-1">
-                타일을 클릭해 선택하거나 <i class="fa-solid fa-circle-xmark text-rose-500"></i> 버튼을 눌러 오늘 명단에서 제외할 수 있습니다.
+                타일을 클릭해 현재 브라우저의 10인 선택 초안을 구성하세요. 게시된 대진표는 별도로 유지됩니다.
               </p>
             </div>
 
@@ -1316,8 +1316,15 @@
 
     let isCloudLoaded = false;
     let summoners = [];
+    // 참가자 선택은 브라우저 탭별 초안으로 관리해 여러 접속자의 선택이 섞이지 않게 한다.
     let selectedPlayerIds = new Set();
     let currentMatch = null;
+
+    function saveSelectionDraft() {
+      try {
+        sessionStorage.setItem('scrim_selected_ids_v2', JSON.stringify(Array.from(selectedPlayerIds).slice(0, 10)));
+      } catch (e) {}
+    }
     let matchHistory = [];
     let replayArchives = [];
     let isDrawerOpen = false;
@@ -1352,8 +1359,12 @@ async function initData() {
         if (storedR) replayArchives = JSON.parse(storedR);
         const storedM = localStorage.getItem('scrim_current_match');
         if (storedM) currentMatch = JSON.parse(storedM);
-        const storedSel = localStorage.getItem('scrim_selected_ids');
-        if (storedSel) selectedPlayerIds = new Set(JSON.parse(storedSel));
+        // 새 탭은 다른 접속자의/이전 공용 선택을 물려받지 않는다.
+        // 새로고침 시에는 sessionStorage에서 현재 탭의 초안만 복원한다.
+        const storedSel = sessionStorage.getItem('scrim_selected_ids_v2');
+        if (storedSel) selectedPlayerIds = new Set(JSON.parse(storedSel).slice(0, 10));
+        else selectedPlayerIds = new Set();
+        saveSelectionDraft();
         const storedPoll = localStorage.getItem('scrim_balancer_poll');
         if (storedPoll) {
           balancerPoll = JSON.parse(storedPoll);
@@ -1405,7 +1416,7 @@ async function initData() {
         localStorage.setItem('scrim_balancer_summoners', JSON.stringify(summoners));
         localStorage.setItem('scrim_balancer_history', JSON.stringify(matchHistory));
         localStorage.setItem('scrim_balancer_replays', JSON.stringify(replayArchives));
-        localStorage.setItem('scrim_selected_ids', JSON.stringify(Array.from(selectedPlayerIds)));
+        saveSelectionDraft();
         localStorage.setItem('scrim_schedules_data', JSON.stringify(scrimSchedules));
         localStorage.setItem('scrim_community_posts', JSON.stringify(communityPosts));
         if (balancerPoll) localStorage.setItem('scrim_balancer_poll', JSON.stringify(balancerPoll));
@@ -1431,7 +1442,6 @@ async function initData() {
             replayArchives,
             scrimSchedules,
             communityPosts,
-            selectedPlayerIds: Array.from(selectedPlayerIds),
             currentMatch: currentMatch || null,
             balancerPoll: balancerPoll || null,
             allowEmptyHistory: options.allowEmptyHistory || false,
@@ -1445,7 +1455,10 @@ async function initData() {
     }
 
     // 🌟 Supabase DB를 단 하나의 절대적 진실(Single Source of Truth)로 동기화
+    let cloudFetchInProgress = false;
     async function fetchCloudData(isInitial = false) {
+      if (cloudFetchInProgress) return;
+      cloudFetchInProgress = true;
       try {
         const res = await fetch('/api/sync');
         if (!res.ok) return;
@@ -1474,10 +1487,6 @@ async function initData() {
           } else if (!communityPosts || communityPosts.length === 0) {
             communityPosts = [DEFAULT_GUIDE_POST];
             saveLocalData();
-          }
-          if (Array.isArray(cloudData.selectedPlayerIds)) {
-            // 🌟 클라우드 DB에서 19명이 넘어오더라도 최대 10명까지만 수용
-            selectedPlayerIds = new Set(cloudData.selectedPlayerIds.slice(0, 10));
           }
           if (cloudData.balancerPoll && Array.isArray(cloudData.balancerPoll.candidates)) {
             balancerPoll = cloudData.balancerPoll;
@@ -1514,6 +1523,8 @@ async function initData() {
         }
       } catch (e) {
         console.warn("fetchCloudData error:", e);
+      } finally {
+        cloudFetchInProgress = false;
       }
     }
 
@@ -2155,19 +2166,11 @@ function getRoleSpecificMMR(player, assignedRole) {
       grid.innerHTML = '';
       document.getElementById('nav-roster-count').textContent = summoners.length;
 
-      // 🌟 대진표가 있으면 '대진표에 실제로 배정된 선수'만을 선택 상태로 사용
-      //    (클라우드 동기화가 옛 selectedPlayerIds를 덮어써도 항상 대진표와 일치)
-      if (currentMatch) {
-        const ids = [];
-        ['blue', 'red'].forEach(t => {
-          (currentMatch[t] || []).forEach(p => { if (p && p.id) ids.push(p.id); });
-        });
-        selectedPlayerIds = new Set(ids);
-      } else if (selectedPlayerIds.size > 10) {
-        // 10명 초과 방지 정규화
+      // 선택 목록은 이 브라우저 탭의 초안이다. 공유 대진표가 이를 덮어쓰지 않도록 분리한다.
+      if (selectedPlayerIds.size > 10) {
         selectedPlayerIds = new Set(Array.from(selectedPlayerIds).slice(0, 10));
-        saveLocalData();
       }
+      saveSelectionDraft();
 
       summoners.forEach(s => {
         const isSel = selectedPlayerIds.has(s.id);
@@ -2204,80 +2207,46 @@ function getRoleSpecificMMR(player, assignedRole) {
       document.getElementById('btn-run-balancing').disabled = (count !== 10);
     }
 
-// 🌟 [핵심] 대진표(currentMatch) 상태를 기준으로 상단 선택(selectedPlayerIds)을 100% 실시간 동기화
+// 대진표 편집은 공유 대진표에만 반영하고, 참가자 선택 초안은 건드리지 않는다.
     function syncSelectedFromCurrentMatch() {
-      if (!currentMatch) return;
-      const activeIds = [];
-      ['blue', 'red'].forEach(team => {
-        if (Array.isArray(currentMatch[team])) {
-          currentMatch[team].forEach(p => {
-            if (p && p.id) activeIds.push(p.id);
-          });
-        }
-      });
-      selectedPlayerIds = new Set(activeIds);
       saveLocalData();
       renderSelectionGrid();
     }
 
-// 🌟 상단 타일 클릭 시: 빈 슬롯이 있으면 즉시 넣고, 이미 대진표에 있으면 뺌
+    // 상단 타일 클릭은 현재 탭의 선택 초안만 변경한다.
+    // 다른 접속자의 선택이나 게시된 대진표를 직접 수정하지 않는다.
     function toggleSelectPlayer(id) {
       const playerObj = summoners.find(s => s.id === id);
       if (!playerObj) return;
 
       if (selectedPlayerIds.has(id)) {
-        if (currentMatch) {
-          ['blue', 'red'].forEach(t => {
-            currentMatch[t].forEach((p, idx) => {
-              if (p && p.id === id) currentMatch[t][idx] = null;
-            });
-          });
-          recalculateMatchMMR();
-          syncSelectedFromCurrentMatch();
-          showToast(`[${playerObj.name}] 선수가 대진에서 제외되었습니다.`, 'info');
-        } else {
-          selectedPlayerIds.delete(id);
-          saveLocalData();
-          renderSelectionGrid();
-        }
+        selectedPlayerIds.delete(id);
+        saveSelectionDraft();
+        renderSelectionGrid();
+        renderSidebarDrawerList();
+        showToast(`[${playerObj.name}] 선택에서 제외했습니다.`, 'info');
         return;
       }
 
-      if (currentMatch) {
-        let filled = false;
-        for (let team of ['blue', 'red']) {
-          for (let i = 0; i < 5; i++) {
-            if (currentMatch[team][i] === null) {
-              currentMatch[team][i] = playerObj;
-              filled = true;
-              break;
-            }
-          }
-          if (filled) break;
-        }
-
-        if (filled) {
-          recalculateMatchMMR();
-          syncSelectedFromCurrentMatch();
-          showToast(`[${playerObj.name}] 선수가 빈자리에 배정되었습니다!`, 'success');
-        } else {
-          showToast('대진표 10명이 모두 차 있습니다. 교체할 선수의 [X]를 먼저 눌러주세요.', 'error');
-        }
-      } else {
-        if (selectedPlayerIds.size >= 10) {
-          showToast('최대 10명까지만 선택할 수 있습니다.', 'error');
-          return;
-        }
-        selectedPlayerIds.add(id);
-        saveLocalData();
-        renderSelectionGrid();
+      if (selectedPlayerIds.size >= 10) {
+        showToast('최대 10명까지만 선택할 수 있습니다.', 'error');
+        return;
       }
+
+      selectedPlayerIds.add(id);
+      saveSelectionDraft();
+      renderSelectionGrid();
+      renderSidebarDrawerList();
+      showToast(`[${playerObj.name}] 선택했습니다.`, 'success');
     }
 
-    // 🌟 [교체] 상단 타일의 작은 [X] 버튼을 눌렀을 때도 동일하게 처리
-    // 상단 타일 [X] 버튼 클릭 시
+    // 상단 타일의 [X] 버튼
     function removePlayerFromSelection(id) {
-      toggleSelectPlayer(id);
+      if (!selectedPlayerIds.has(id)) return;
+      selectedPlayerIds.delete(id);
+      saveSelectionDraft();
+      renderSelectionGrid();
+      renderSidebarDrawerList();
     }
 
     // 🌟 대진표 카드 내부의 [X] 버튼 클릭 시 (해당 자리만 비우고 상단 선택도 해제)
@@ -2320,16 +2289,16 @@ function getRoleSpecificMMR(player, assignedRole) {
 
     function clearSelection() {
       selectedPlayerIds.clear();
-      saveLocalData();
+      saveSelectionDraft();
       renderSelectionGrid();
       renderSidebarDrawerList();
-      showToast('오늘 10인 선택이 비워졌습니다.', 'info');
+      showToast('현재 탭의 10인 선택 목록을 비웠습니다. 게시된 대진표는 유지됩니다.', 'info');
     }
 
     function autoSelectTop10() {
       const sorted = [...summoners].sort((a, b) => getPlayerMMR(b).mmr - getPlayerMMR(a).mmr);
       selectedPlayerIds = new Set(sorted.slice(0, 10).map(s => s.id));
-      saveLocalData();
+      saveSelectionDraft();
       renderSelectionGrid();
       renderSidebarDrawerList();
       showToast('MMR 상위 10명이 자동 선택되었습니다.', 'success');
