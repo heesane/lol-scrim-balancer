@@ -1366,6 +1366,61 @@ class CollectorUI:
         root.after(500, self.load_counters)
         # 창이 뜨면 버튼을 누르지 않아도 바로 수집을 시작한다.
         root.after(400, self.start)
+        root.after(150, self.setup_resize_smoothing)
+
+    # ---------- 창 크기 조절 ----------
+    def setup_resize_smoothing(self):
+        """창 크기를 바꾸는 동안에만 Windows 합성 그리기(WS_EX_COMPOSITED)를 켠다.
+
+        크기가 바뀌면 Windows가 자식 창 배경을 먼저 칠하고 Tk가 나중에 내용을 그려, 카드 안 글자와
+        아이콘이 지워졌다 나타나며 깜빡인다. 합성 그리기는 창 전체를 한 번에 그려 이를 막지만, 켜 둔 채로
+        두면 Tk와 맞물려 쉬지 않고 다시 그리느라 CPU를 계속 쓰므로 크기 변경이 멈추면 끈다.
+        """
+        self.composited = False
+        self.resize_size = None
+        self.resize_job = None
+        self.frame_hwnd = None
+        if sys.platform != 'win32':
+            return
+        try:
+            import ctypes
+            self.user32 = ctypes.windll.user32
+            self.frame_hwnd = self.user32.GetParent(self.root.winfo_id())
+        except (AttributeError, OSError, tk.TclError):
+            return
+        if self.frame_hwnd:
+            self.root.bind('<Configure>', self.on_root_configure, add='+')
+
+    def on_root_configure(self, event):
+        if event.widget is not self.root:
+            return
+        size = (event.width, event.height)
+        if size == self.resize_size:
+            return
+        first = self.resize_size is None
+        self.resize_size = size
+        if first:
+            return
+        self.set_composited(True)
+        if self.resize_job:
+            self.root.after_cancel(self.resize_job)
+        self.resize_job = self.root.after(400, self.end_resize)
+
+    def end_resize(self):
+        self.resize_job = None
+        self.set_composited(False)
+
+    def set_composited(self, on):
+        if on == self.composited or not self.frame_hwnd:
+            return
+        GWL_EXSTYLE, WS_EX_COMPOSITED = -20, 0x02000000
+        try:
+            style = self.user32.GetWindowLongW(self.frame_hwnd, GWL_EXSTYLE)
+            style = style | WS_EX_COMPOSITED if on else style & ~WS_EX_COMPOSITED
+            self.user32.SetWindowLongW(self.frame_hwnd, GWL_EXSTYLE, style)
+        except OSError:
+            return
+        self.composited = on
 
     # ---------- 카운터 정보 탭 ----------
     def build_counter_tab(self, tab):
