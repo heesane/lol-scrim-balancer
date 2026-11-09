@@ -807,8 +807,14 @@ def px(value):
     return int(round(value * SCALE))
 
 
+# 맥 Tk는 1pt를 1px로 그려 Windows(96dpi, 1pt≈1.33px)보다 글자가 작게 보인다. 미리보기를 Windows와 같게 맞춘다.
+FONT_SCALE = 4 / 3 if sys.platform == 'darwin' else 1.0
+
+
 def font(size, weight='normal'):
-    return (FONT, size, weight)
+    # 본문·보조 글자는 한 단계 크게 쓴다.
+    size = size + 1 if size <= 12 else size
+    return (FONT, round(size * FONT_SCALE), weight)
 
 
 def round_rect(canvas, x1, y1, x2, y2, r, **kw):
@@ -850,6 +856,8 @@ class RoundButton(tk.Canvas):
         'secondary': (CARD, MUTED, FG, LINE_STRONG),
         'pill': (CARD, ACCENT_TINT, '#9A6B12', ACCENT_SOFT),
         'danger': (CARD, '#FEF2F2', RED, '#F3B4B4'),
+        'selected': (ACCENT_TINT, ACCENT_TINT, '#7A5410', ACCENT),
+        'selected_danger': ('#FEF2F2', '#FEF2F2', RED, RED),
     }
 
     def __init__(self, parent, text, command=None, kind='secondary', width=None, height=36, size=10, bg=CARD, state='normal', image=None):
@@ -870,6 +878,11 @@ class RoundButton(tk.Canvas):
         self.bind('<ButtonRelease-1>', self._click)
         self.bind('<Configure>', lambda e: self.draw())
         self.draw()
+
+    def set_kind(self, kind):
+        if kind != self.kind:
+            self.kind = kind
+            self.draw()
 
     def _set_focus(self, value):
         self._focus = value
@@ -980,8 +993,8 @@ class CollectorUI:
         self.counter_view = None
         SCALE = max(1.0, root.winfo_fpixels('1i') / 96)
         root.title('내전 결과 수집기')
-        root.geometry(f'{px(980)}x{px(760)}')
-        root.minsize(px(860), px(660))
+        root.geometry(f'{px(1100)}x{px(880)}')
+        root.minsize(px(940), px(700))
         root.configure(bg=BG)
         root.option_add('*TCombobox*Listbox.font', font(10))
         root.option_add('*TCombobox*Listbox.background', CARD)
@@ -990,7 +1003,7 @@ class CollectorUI:
         style = ttk.Style()
         style.theme_use('clam')
         style.configure('Treeview', background=CARD, fieldbackground=CARD, foreground=FG, font=font(10),
-                        rowheight=px(30), borderwidth=0, bordercolor=LINE, lightcolor=CARD, darkcolor=CARD)
+                        rowheight=px(34), borderwidth=0, bordercolor=LINE, lightcolor=CARD, darkcolor=CARD)
         style.map('Treeview', background=[('selected', ACCENT_TINT)], foreground=[('selected', FG)])
         style.configure('Treeview.Heading', background=MUTED, foreground=SUB, font=font(9, 'bold'), padding=px(6),
                         borderwidth=0, relief='flat', bordercolor=LINE, lightcolor=MUTED, darkcolor=MUTED)
@@ -1223,40 +1236,71 @@ class CollectorUI:
         self.counter_picks.pack(fill='x')
         self.counter_status = tk.StringVar(value='상성 데이터를 불러오는 중...')
         tk.Label(tab, textvariable=self.counter_status, bg=CARD, fg=SUB, font=font(10), anchor='w').pack(fill='x', pady=(px(4), px(8)))
-        box = tk.Frame(tab, bg=CARD, highlightthickness=1, highlightbackground=LINE)
-        box.pack(fill='both', expand=True)
-        self.counter_text = tk.Text(box, wrap='word', font=font(10), bg=CARD, fg=FG, selectbackground=ACCENT_SOFT, selectforeground=FG, inactiveselectbackground=ACCENT_TINT, relief='flat', bd=0, highlightthickness=0,
+        body = tk.Frame(tab, bg=CARD)
+        body.pack(fill='both', expand=True)
+        body.columnconfigure(0, weight=3, uniform='counter')
+        body.columnconfigure(1, weight=2, uniform='counter')
+        body.rowconfigure(0, weight=1)
+        # 왼쪽: 카운터 개요(아이콘 칩)
+        box = tk.Frame(body, bg=CARD, highlightthickness=1, highlightbackground=LINE)
+        box.grid(row=0, column=0, sticky='nsew', padx=(0, px(10)))
+        self.counter_text = tk.Text(box, wrap='word', font=font(10), bg=CARD, fg=FG, selectbackground=ACCENT_SOFT, selectforeground=FG,
+                                    inactiveselectbackground=ACCENT_TINT, relief='flat', bd=0, highlightthickness=0,
                                     padx=px(18), pady=px(14), spacing1=px(1), spacing3=px(1), cursor='arrow')
         scroll = ttk.Scrollbar(box, orient='vertical', command=self.counter_text.yview)
         self.counter_text.configure(yscrollcommand=scroll.set)
         scroll.pack(side='right', fill='y')
         self.counter_text.pack(side='left', fill='both', expand=True)
         text = self.counter_text
-        text.tag_configure('title', font=font(17, 'bold'))
+        text.tag_configure('title', font=font(18, 'bold'))
         text.tag_configure('sub', foreground=SUB)
-        text.tag_configure('section', font=font(12, 'bold'), spacing1=px(22), spacing3=px(8))
-        text.tag_configure('name', font=font(10, 'bold'))
-        text.tag_configure('hit', foreground=RED, font=font(10, 'bold'))
-        text.tag_configure('reason', foreground='#3F4756', lmargin1=px(34), lmargin2=px(34), spacing1=px(3), spacing2=px(4), spacing3=px(12))
-        text.tag_configure('rest', spacing2=px(6), lmargin1=px(2), lmargin2=px(2))
-        def limit_measure(event):
-            # 설명 문단은 한 줄이 너무 길어지지 않게 오른쪽 여백으로 폭을 제한한다(약 75자).
-            text.tag_configure('reason', rmargin=max(px(14), event.width - px(860)))
-        text.bind('<Configure>', limit_measure, add='+')
+        text.tag_configure('section', font=font(12, 'bold'), spacing1=px(18), spacing3=px(6))
+        text.tag_configure('count', font=font(10), foreground=SUB)
+        text.tag_configure('chips', spacing1=px(2), spacing2=px(2))
         text.tag_configure('alert', background='#FEF2F2', foreground=RED, font=font(10, 'bold'),
-                           lmargin1=px(10), lmargin2=px(10), rmargin=px(10), spacing1=px(8), spacing3=px(8))
+                           lmargin1=px(10), lmargin2=px(10), rmargin=px(10), spacing1=px(10), spacing3=px(8))
         text.tag_configure('good', background='#F0FDF4', foreground=GREEN, font=font(10, 'bold'),
-                           lmargin1=px(10), lmargin2=px(10), rmargin=px(10), spacing1=px(8), spacing3=px(8))
-        text.tag_configure('foot', foreground=SUB, font=font(9), spacing1=px(14))
+                           lmargin1=px(10), lmargin2=px(10), rmargin=px(10), spacing1=px(10), spacing3=px(8))
+        text.tag_configure('foot', foreground=SUB, font=font(9), spacing1=px(18))
+        # 오른쪽: 선택한 카운터의 상세
+        detail = tk.Frame(body, bg=STRIPE, highlightthickness=1, highlightbackground=LINE)
+        detail.grid(row=0, column=1, sticky='nsew')
+        self.detail_text = tk.Text(detail, wrap='word', font=font(11), bg=STRIPE, fg=FG, selectbackground=ACCENT_SOFT,
+                                   selectforeground=FG, inactiveselectbackground=ACCENT_TINT, relief='flat', bd=0,
+                                   highlightthickness=0, padx=px(20), pady=px(18), cursor='arrow')
+        detail_scroll = ttk.Scrollbar(detail, orient='vertical', command=self.detail_text.yview)
+        self.detail_text.configure(yscrollcommand=detail_scroll.set)
+        self.detail_actions = tk.Frame(detail, bg=STRIPE)
+        self.detail_actions.pack(side='bottom', fill='x', padx=px(18), pady=(0, px(16)))
+        detail_scroll.pack(side='right', fill='y')
+        self.detail_text.pack(side='left', fill='both', expand=True)
+        d = self.detail_text
+        d.tag_configure('kind', foreground='#9A6B12', font=font(10, 'bold'), spacing3=px(4))
+        d.tag_configure('kind_hit', foreground=RED, font=font(10, 'bold'), spacing3=px(4))
+        d.tag_configure('name', font=font(17, 'bold'))
+        d.tag_configure('lines', foreground=SUB, font=font(10))
+        d.tag_configure('reason', font=font(11), foreground='#2B3240', spacing1=px(14), spacing2=px(6))
+        d.tag_configure('empty', font=font(10), foreground=SUB, spacing1=px(14), spacing2=px(4))
+        self.counter_chips = {}
+        self.counter_items = {}
+        self.counter_selected = None
         self.write_counter_text([('챔피언 이름을 검색하거나, 챔피언 선택에 들어가면 내 챔피언의 상성을 자동으로 보여 줍니다.\n', 'sub')])
+        self.write_detail(None)
 
     def write_counter_text(self, parts, scroll=0.0):
         text = self.counter_text
         text.configure(state='normal')
         text.delete('1.0', 'end')
+        keep = {chunk for chunk, tag in parts if tag == 'WIN'}
+        for key, chip in list(getattr(self, 'counter_chips', {}).items()):
+            if chip not in keep:
+                chip.destroy()
+                del self.counter_chips[key]
         for chunk, tag in parts:
             if tag == 'IMG':
                 text.image_create('end', image=chunk, align='center', padx=px(3))
+            elif tag == 'WIN':
+                text.window_create('end', window=chunk, padx=px(3), pady=px(4), align='center')
             else:
                 text.insert('end', chunk, tag if isinstance(tag, tuple) else (tag or ()))
         text.configure(state='disabled')
@@ -1363,60 +1407,109 @@ class CollectorUI:
         if entry is None:
             self.counter_view = None
             self.write_counter_text([(f'{champion}의 상성 정보가 없습니다.\n', 'sub')])
+            self.write_detail(None)
             return
+        same_champion = self.counter_view and self.counter_view[0] == champion
         self.counter_view = (champion, tuple(highlight), highlight_label)
         info = self.counter_index.describe(entry)
         marked = {norm_name(name) for name in highlight}
+        self.counter_highlight_label = highlight_label
+        self.counter_items = {}
+        for chip in self.counter_chips.values():
+            chip.destroy()
+        self.counter_chips = {}
         parts = []
-        def icon(name, size):
-            image = self.champ_image(name, size)
-            if image is not None:
-                parts.append((image, 'IMG'))
-        icon(info['champion'], 52)
-        parts.extend([(info['champion'], 'title'), ('   ' + ' · '.join(info['lines']) + '\n', 'sub')])
+        title_icon = self.champ_image(info['champion'], 56)
+        if title_icon is not None:
+            parts.append((title_icon, 'IMG'))
+        parts.extend([(' ' + info['champion'], 'title'), ('   ' + ' · '.join(info['lines']) + '\n', 'sub')])
         hits = [c['name'] for c in info['hard'] + info['general'] if norm_name(c['name']) in marked]
         if hits:
             parts.append((f"{highlight_label}에 {info['champion']}의 카운터가 있습니다: {', '.join(dict.fromkeys(hits))}\n", 'alert'))
         elif marked:
             parts.append((f"{highlight_label}에 {info['champion']}의 카운터 챔피언이 없습니다\n", 'good'))
 
-        def champions(title, items):
+        def chips(title, kind_label, items, with_icon=True):
             if not items:
                 return
-            parts.append((title + f'  {len(items)}\n', 'section'))
-            detailed = [c for c in items if c['reason']]
-            rest = [c for c in items if not c['reason']]
-            for c in detailed:
-                hit = norm_name(c['name']) in marked
-                icon(c['name'], 28)
-                parts.append((c['name'], 'hit' if hit else 'name'))
-                parts.append((('  ' + ', '.join(c['lines']) if c['lines'] else '') + ('  · ' + highlight_label if hit else '') + '\n', 'sub'))
-                parts.append((c['reason'] + '\n', 'reason'))
-            if rest:
-                parts.append(('그 밖에  ', 'sub'))
-                start = len(parts)
-                for index, c in enumerate(rest):
-                    hit = norm_name(c['name']) in marked
-                    icon(c['name'], 22)
-                    parts.append((c['name'], 'hit' if hit else 'name'))
-                    if index < len(rest) - 1:
-                        parts.append(('   ', None))
-                parts.append(('\n', None))
-                parts[start - 1:] = [(chunk, tag if tag in ('IMG',) else ((tag, 'rest') if tag else 'rest')) for chunk, tag in parts[start - 1:]]
+            parts.extend([(title, 'section'), (f'  {len(items)}\n', ('section', 'count'))])
+            for item in items:
+                key = f"{kind_label}:{item['name']}"
+                hit = norm_name(item['name']) in marked
+                self.counter_items[key] = dict(item, kind=kind_label, hit=hit)
+                image = self.champ_image(item['name'], 24) if with_icon else None
+                chip = RoundButton(self.counter_text, item['name'], lambda k=key: self.select_counter(k),
+                                   kind='danger' if hit else 'secondary', height=36, size=10, image=image)
+                self.counter_chips[key] = chip
+                parts.append((chip, 'WIN'))
+            parts.append(('\n', 'chips'))
 
-        champions('하드 카운터', info['hard'])
-        champions('일반 카운터', info['general'])
-        champions('아이템·룬 등 대처 요소', info['extras'])
-        if info['synergy']:
-            parts.append(('함께하면 좋은 조합\n', 'section'))
-            for index, name in enumerate(info['synergy']):
-                icon(name, 22)
-                parts.append((name + ('   ' if index < len(info['synergy']) - 1 else '\n'), None))
+        chips('하드 카운터', '하드 카운터', info['hard'])
+        chips('일반 카운터', '일반 카운터', info['general'])
+        chips('아이템·룬 등 대처 요소', '대처 요소', info['extras'], with_icon=False)
+        chips('함께하면 좋은 조합', '함께하면 좋은 조합',
+              [{'name': n, 'lines': [], 'reason': ''} for n in info['synergy']])
         if info['combos']:
-            parts.extend([('까다로운 바텀 조합\n', 'section'), ('   ·   '.join(info['combos']) + '\n', 'rest')])
+            parts.extend([('까다로운 바텀 조합\n', 'section'), ('   ·   '.join(info['combos']) + '\n', None)])
         parts.append(('출처: vschamp.lol · 설명은 원문 그대로 보여 줍니다. 챔피언 이미지: Riot Data Dragon\n', 'foot'))
+        # 칩 위젯이 그려지기 전에 고르면 테두리가 갱신되지 않으므로 먼저 내용을 쓴다.
+        previous = self.counter_selected if same_champion else None
         self.write_counter_text(parts, scroll)
+        if previous not in self.counter_items:
+            previous = next((k for k, v in self.counter_items.items() if v['hit']), None) \
+                or next((k for k, v in self.counter_items.items() if v['kind'] == '하드 카운터'), None) \
+                or next(iter(self.counter_items), None)
+        self.counter_selected = None
+        if previous:
+            self.select_counter(previous)
+        else:
+            self.write_detail(None)
         self.request_icons()
+
+    def select_counter(self, key):
+        if key not in self.counter_items:
+            return
+        old = self.counter_selected
+        if old in self.counter_chips:
+            self.counter_chips[old].set_kind('danger' if self.counter_items[old]['hit'] else 'secondary')
+        self.counter_selected = key
+        item = self.counter_items[key]
+        self.counter_chips[key].set_kind('selected_danger' if item['hit'] else 'selected')
+        self.write_detail(item)
+
+    def write_detail(self, item):
+        d = self.detail_text
+        d.configure(state='normal')
+        d.delete('1.0', 'end')
+        for child in self.detail_actions.winfo_children():
+            child.destroy()
+        if item is None:
+            d.insert('end', '카운터를 누르면\n여기에 자세한 설명이 나옵니다.', 'empty')
+            d.configure(state='disabled')
+            return
+        if item['hit']:
+            d.insert('end', f"{item['kind']} · {self.counter_highlight_label}에 있음\n", 'kind_hit')
+        else:
+            d.insert('end', item['kind'] + '\n', 'kind')
+        image = self.champ_image(item['name'], 48) if self.counter_index and self.counter_index.get(item['name']) else None
+        if image is not None:
+            d.image_create('end', image=image, align='center', padx=px(2))
+            d.insert('end', ' ')
+        d.insert('end', item['name'], 'name')
+        if item.get('lines'):
+            d.insert('end', '   ' + ', '.join(item['lines']), 'lines')
+        d.insert('end', '\n')
+        if item.get('reason'):
+            d.insert('end', item['reason'] + '\n', 'reason')
+        elif item['kind'] == '함께하면 좋은 조합':
+            d.insert('end', '함께 쓰면 좋은 조합으로 꼽힌 챔피언입니다. 원문에 따로 설명은 없습니다.\n', 'empty')
+        else:
+            d.insert('end', '원문에 이 항목의 설명이 없습니다.\n', 'empty')
+        d.configure(state='disabled')
+        d.yview_moveto(0)
+        if self.counter_index and self.counter_index.get(item['name']):
+            RoundButton(self.detail_actions, f"{item['name']} 상성 보기", lambda n=item['name']: self.show_counter(n),
+                        kind='secondary', height=36, size=10, bg=STRIPE).pack(side='left')
 
     def fetch_champ_select(self):
         port, password = collector.get_lcu_credentials()
