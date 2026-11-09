@@ -169,9 +169,27 @@ def preserve_match(record):
     os.replace(path + '.tmp', path)
 
 
+def has_bots(data):
+    """경기에 봇이 끼어 있는지 본다. 봇과 하는 사용자 설정 연습 게임이 내전으로 제출되지 않게 한다.
+
+    경기 종료 화면(EOG) 데이터는 봇에 botPlayer/isBot을 붙이고, 매치 히스토리는 봇의 summonerId를 0으로,
+    gameName을 빈 값으로 둔다.
+    """
+    players = list(data.get('participants') or [])
+    for team in data.get('teams') or []:
+        players += [p for p in (team.get('players') or []) if isinstance(p, dict)]
+    if any(p.get('botPlayer') or p.get('isBot') for p in players if isinstance(p, dict)):
+        return True
+    for identity in data.get('participantIdentities') or []:
+        player = (identity.get('player') or {}) if isinstance(identity, dict) else {}
+        if player and not player.get('summonerId') and not player.get('gameName') and not player.get('tagLine'):
+            return True
+    return False
+
+
 def is_scrim(data):
     return (isinstance(data, dict) and 'CUSTOM' in str(data.get('gameType') or data.get('queueType') or '').upper()
-            and data.get('gameMode') == 'CLASSIC' and data.get('mapId', 11) == 11)
+            and data.get('gameMode') == 'CLASSIC' and data.get('mapId', 11) == 11 and not has_bots(data))
 
 
 def push_match_to_cloud(match_data):
