@@ -614,6 +614,56 @@ def norm_name(value):
     return re.sub(r'\s+', '', str(value or '')).lower()
 
 
+SCRIM_STATS_MAX_AGE = 5 * 60
+
+
+def build_scrim_stats(records):
+    """웹앱 matchHistory로 {정규화된 이름: {챔피언: [판수, 승수]}}를 만든다."""
+    stats = {}
+    for match in records or []:
+        if not isinstance(match, dict):
+            continue
+        for team in ('blue', 'red'):
+            for player in match.get(team) or []:
+                if not isinstance(player, dict):
+                    continue
+                name, champion = norm_name(player.get('name')), player.get('champion')
+                if not name or not champion:
+                    continue
+                entry = stats.setdefault(name, {}).setdefault(champion, [0, 0])
+                entry[0] += 1
+                entry[1] += 1 if player.get('win') else 0
+    return stats
+
+
+def lookup_scrim_stats(stats, name):
+    """'이름#태그'가 그대로 맞는 기록을 찾고, 없으면 게임 이름만 같은 기록을 합쳐 돌려준다."""
+    key = norm_name(name)
+    if not stats or not key:
+        return {}
+    if key in stats:
+        return stats[key]
+    base = key.split('#')[0]
+    merged = {}
+    for other, champs in stats.items():
+        if other.split('#')[0] == base:
+            for champion, (games, wins) in champs.items():
+                entry = merged.setdefault(champion, [0, 0])
+                entry[0] += games
+                entry[1] += wins
+    return merged
+
+
+def top_scrim_champions(champs, limit=3):
+    """판수, 승률 순으로 상위 챔피언 [(챔피언, 판수, 승수)]."""
+    ranked = sorted(champs.items(), key=lambda item: (-item[1][0], -item[1][1] / item[1][0], item[0]))
+    return [(champion, games, wins) for champion, (games, wins) in ranked[:limit]]
+
+
+def record_text(games, wins):
+    return f'{wins}승 {games - wins}패'
+
+
 def split_ref(value):
     """'제라스(원딜, 미드)' -> ('제라스', ['원딜', '미드'])"""
     match = re.match(r'^(.*?)\s*\(([^()]*)\)\s*$', str(value or ''))
@@ -1095,6 +1145,8 @@ class CollectorUI:
         self.counter_auto_key = None
         self.champ_select = None
         self.champ_names = {}
+        self.scrim_stats = None
+        self.scrim_stats_at = None
         self.champ_keys = {}
         self.icon_data = {}
         self.champ_images = {}
@@ -1932,6 +1984,13 @@ class CollectorUI:
                 if kind == 'champselect':
                     self.view_events.put((kind, source, self.fetch_champ_select(), None))
                     return
+                if kind == 'scrimstats':
+                    with urllib.request.urlopen(collector.SERVER_URL, context=ssl.create_default_context(), timeout=8) as response:
+                        records = json.load(response).get('matchHistory', [])
+                    if not isinstance(records, list):
+                        raise ValueError('경기 목록 형식을 확인할 수 없습니다.')
+                    self.view_events.put((kind, source, build_scrim_stats(records), None))
+                    return
                 if kind == 'history' and source == '웹앱 내전 기록':
                     with urllib.request.urlopen(collector.SERVER_URL, context=ssl.create_default_context(), timeout=8) as response:
                         data = json.load(response)
@@ -2031,6 +2090,8 @@ class CollectorUI:
             self.update_lobby_empty()
             return
         self.draft_deadline = time.monotonic() + draft['left'] if draft.get('left') else None
+        if self.scrim_stats_at is None or time.monotonic() - self.scrim_stats_at > SCRIM_STATS_MAX_AGE:
+            self.refresh_view('scrimstats')
         key = repr({k: v for k, v in draft.items() if k != 'left'})
         if key != self.draft_key or force:
             self.draft_key = key
@@ -2058,6 +2119,7 @@ class CollectorUI:
         self.draft_timer.pack(side='right')
         self.tick_draft_timer(reschedule=False)
         tk.Label(head, text='픽을 누르면 카운터 정보를 봅니다', bg=CARD, fg=SUB, font=font(9)).pack(side='right', padx=(0, px(12)))
+        self.ban_suggestions(panel, draft)
         columns = tk.Frame(panel, bg=CARD)
         columns.pack(fill='both', expand=True)
         columns.columnconfigure(0, weight=1, uniform='side')
@@ -2120,6 +2182,9 @@ class CollectorUI:
                  font=font(10, 'bold'), anchor='w').pack(fill='x')
         if player.get('champion'):
             detail, fg = player['champion'], color
+            if self.scrim_stats is not None:
+                record = lookup_scrim_stats(self.scrim_stats, player['name']).get(player['champion'])
+                detail += f'  ·  내전 {record_text(*record)}' if record else '  ·  내전 첫 판'
         elif player.get('intent'):
             detail, fg = f"{player['intent']} 고민 중", SUB
         elif active:
@@ -2127,6 +2192,7 @@ class CollectorUI:
         else:
             detail, fg = '대기', SUB
         tk.Label(text, text=detail, bg=bg, fg=fg, font=font(10), anchor='w').pack(fill='x')
+        tk.Label(text, text=self.scrim_summary(player), bg=bg, fg=SUB, font=font(9), anchor='w').pack(fill='x')
         if player.get('champion'):
             enemies = [p['champion'] for p in draft['players'] if p['side'] != player['side'] and p.get('champion')]
             label = '상대 팀' if player['side'] == draft.get('my_side') or not draft.get('my_side') else '우리 팀'
@@ -2137,6 +2203,45 @@ class CollectorUI:
                 widget.bind('<Button-1>', open_counter)
                 widget.configure(cursor='hand2')
         return row
+
+    def scrim_summary(self, player):
+        """플레이어 이름 아래에 넣을 내전 전적 한 줄."""
+        if self.scrim_stats is None:
+            return '내전 기록 불러오는 중...'
+        champs = lookup_scrim_stats(self.scrim_stats, player['name'])
+        if not champs:
+            return '내전 기록 없음'
+        top = ' · '.join(f'{name} {record_text(games, wins)}' for name, games, wins in top_scrim_champions(champs))
+        return '내전 주력 · ' + top
+
+    def ban_suggestions(self, panel, draft):
+        """상대 진영 플레이어들의 내전 주력 중 아직 밴·픽되지 않은 챔피언을 판수, 승률 순으로 3개 보여 준다."""
+        my_side = draft.get('my_side')
+        if not my_side or self.scrim_stats is None:
+            return
+        taken = {slot['champion'] for side in draft['bans'].values() for slot in side if slot and slot.get('champion')}
+        taken |= {p['champion'] for p in draft['players'] if p.get('champion')}
+        best = {}
+        for player in draft['players']:
+            if player['side'] == my_side:
+                continue
+            for champion, (games, wins) in lookup_scrim_stats(self.scrim_stats, player['name']).items():
+                if champion in taken:
+                    continue
+                rank = (games, wins / games)
+                if champion not in best or rank > best[champion][0]:
+                    best[champion] = (rank, player['name'].split('#')[0], games, wins)
+        picks = sorted(best.items(), key=lambda item: item[1][0], reverse=True)[:3]
+        row = tk.Frame(panel, bg=MUTED, highlightthickness=1, highlightbackground=LINE)
+        row.pack(fill='x', pady=(0, px(12)))
+        tk.Label(row, text='추천 밴', bg=MUTED, fg=RED, font=font(10, 'bold')).pack(side='left', padx=(px(10), px(8)), pady=px(6))
+        if not picks:
+            tk.Label(row, text='상대 팀 내전 기록 없음', bg=MUTED, fg=SUB, font=font(10)).pack(side='left')
+            return
+        for champion, (_, owner, games, wins) in picks:
+            image = self.champ_image(champion, 22)
+            tk.Label(row, text=f' {champion}({owner} {record_text(games, wins)})', image=image or '', compound='left',
+                     bg=MUTED, fg=FG, font=font(10)).pack(side='left', padx=(0, px(12)))
 
     def tick_draft_timer(self, reschedule=True):
         if self.closing or not self.draft:
@@ -2166,6 +2271,16 @@ class CollectorUI:
         if kind == 'icons':
             if not self.closing:
                 self.render_icons(data)
+            return
+        if kind == 'scrimstats':
+            if error:
+                # 실패하면 1분 뒤에 다시 받는다. 이전 기록이 있으면 그대로 쓴다.
+                self.scrim_stats_at = time.monotonic() - SCRIM_STATS_MAX_AGE + 60
+                self.events.put(f'[!] 웹앱 내전 기록을 받지 못했습니다: {error}\n')
+            else:
+                self.scrim_stats, self.scrim_stats_at = data, time.monotonic()
+            if not self.closing and self.draft and self.game_phase == 'ChampSelect':
+                self.build_draft_board(self.draft)
             return
         if kind == 'champselect':
             if not self.closing and not error and self.game_phase == 'ChampSelect':
