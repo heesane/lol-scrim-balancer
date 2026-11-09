@@ -1103,6 +1103,7 @@ class CollectorUI:
         self.counter_view = None
         SCALE = max(1.0, root.winfo_fpixels('1i') / 96)
         root.title('내전 결과 수집기')
+        self.set_window_icon(root)
         root.geometry(f'{px(1100)}x{px(880)}')
         root.minsize(px(940), px(700))
         root.configure(bg=BG)
@@ -1749,6 +1750,19 @@ class CollectorUI:
         if data['me'] and self.counter_index and not rebuild_only:
             view(data['me'], True)()
         self.request_icons()
+
+    @staticmethod
+    def set_window_icon(root):
+        """창 제목줄·작업 표시줄 아이콘. Windows는 여러 크기가 든 .ico를, 그 밖에서는 PNG를 쓴다."""
+        try:
+            if sys.platform == 'win32':
+                root.iconbitmap(default=resource_path('icons', 'app.ico'))
+            else:
+                images = [tk.PhotoImage(file=resource_path('icons', f'app-{n}.png')) for n in (64, 32)]
+                root.iconphoto(True, *images)
+                root._app_icons = images
+        except tk.TclError:
+            pass
 
     def show_tab(self, page, refresh=True):
         page.tkraise()
@@ -2439,6 +2453,7 @@ if __name__ == '__main__':
         # 빌드 확인용: exe에 폰트가 함께 묶였는지 검사한다.
         missing = [name for name in FONT_FILES if not os.path.exists(resource_path('fonts', name))]
         missing += [f'refresh-cw-{n}.png' for n in ICON_SIZES if not os.path.exists(resource_path('icons', f'refresh-cw-{n}.png'))]
+        missing += [name for name in ('app.ico', 'app-32.png', 'app-64.png') if not os.path.exists(resource_path('icons', name))]
         print('누락된 리소스: ' + ', '.join(missing) if missing else '리소스 확인 완료', flush=True)
         sys.exit(1 if missing else 0)
     if '--worker' in sys.argv:
@@ -2456,6 +2471,11 @@ if __name__ == '__main__':
         try:
             register_fonts()
         except OSError:
+            pass
+        try:
+            # 작업 표시줄이 python.exe 아이콘으로 묶이지 않도록 앱 ID를 따로 둔다.
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('LolScrimBalancer.ScrimCollector')
+        except (AttributeError, OSError, NameError):
             pass
         app = tk.Tk()
         CollectorUI(app)

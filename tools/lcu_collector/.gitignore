@@ -8,3 +8,4 @@ dist/
 *.spec
 vschamp_champ.json*
 champion_icons/
+.DS_Store

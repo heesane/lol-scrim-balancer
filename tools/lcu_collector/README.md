@@ -39,7 +39,7 @@ macOS나 Linux에서는 Windows용 exe를 직접 빌드할 수 없습니다.
 
 ```bat
 pip install pyinstaller
-pyinstaller --onefile --windowed --name ScrimCollector --add-data "tools\lcu_collector\fonts;fonts" --add-data "tools\lcu_collector\icons;icons" tools\lcu_collector\lcu_collector.py
+pyinstaller --onefile --windowed --name ScrimCollector --add-data "tools\lcu_collector\fonts;fonts" --add-data "tools\lcu_collector\icons;icons" --icon tools\lcu_collector\icons\app.ico tools\lcu_collector\lcu_collector.py
 ```
 
 ## 글꼴
@@ -51,6 +51,8 @@ pyinstaller --onefile --windowed --name ScrimCollector --add-data "tools\lcu_col
 ## 아이콘
 
 버튼 아이콘은 [Lucide](https://lucide.dev/)(ISC 라이선스)의 SVG를 `icons/`에 두고, Tk 8.6이 SVG를 그리지 못하므로 화면 배율별(18·23·27·36px) PNG로 변환해 함께 넣습니다. 라이선스 전문은 `icons/lucide-LICENSE.txt`에 있습니다.
+
+앱 아이콘(`icons/app.svg`)은 Lucide `scale` 아이콘을 포인트 색 둥근 사각형 위에 올린 것이며, exe 아이콘용 `app.ico`(16~256px)와 창 아이콘용 `app-32.png`·`app-64.png`로 변환해 둡니다.
 
 ## 카운터 정보
 

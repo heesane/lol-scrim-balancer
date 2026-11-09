@@ -37,6 +37,7 @@ jobs:
         run: >
           pyinstaller --onefile --windowed --clean --noconfirm
           --name ScrimCollector
+          --icon tools/lcu_collector/icons/app.ico
           --add-data "tools/lcu_collector/fonts;fonts"
           --add-data "tools/lcu_collector/icons;icons"
           tools/lcu_collector/lcu_collector.py
