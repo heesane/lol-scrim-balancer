@@ -1131,6 +1131,7 @@ class CollectorUI:
         self.stopping = False
         self.game_phase = None
         self.submission_state = None
+        self.exit_error = None
         self.closing = False
         self.events = queue.Queue()
         self.view_events = queue.Queue()
@@ -1949,6 +1950,10 @@ class CollectorUI:
         if self.stopping:
             return
         active = self.process is not None
+        if not active and self.exit_error:
+            # 게임 단계가 갱신되어도 워커가 오류로 끝났다는 안내는 다시 시작할 때까지 남긴다.
+            self.status.set(self.exit_error)
+            return
         if self.game_phase in ('InProgress', 'Reconnect', 'GameStart'):
             text = '게임 중'
         elif active and self.submission_state == 'submitted':
@@ -2476,6 +2481,7 @@ class CollectorUI:
             return
         self.process = process
         self.stopping = False
+        self.exit_error = None
         self.submission_state = None
         self.update_game_status()
         self.refresh_view('phase')
@@ -2539,9 +2545,8 @@ class CollectorUI:
             self.process.stdin.close()
             self.process = None
             self.stopping = False
+            self.exit_error = f'오류로 종료됨 · 코드 {code}, 로그를 확인하세요' if code != 0 else None
             self.update_game_status()
-            if code != 0:
-                self.status.set(f'오류로 종료됨 · 코드 {code}, 로그를 확인하세요')
             self.start_button.configure(state='normal')
             self.stop_button.configure(state='disabled')
             self.stopping = False
