@@ -38,6 +38,7 @@ jobs:
           pyinstaller --onefile --windowed --clean --noconfirm
           --name ScrimCollector
           --add-data "tools/lcu_collector/fonts;fonts"
+          --add-data "tools/lcu_collector/icons;icons"
           tools/lcu_collector/lcu_collector.py
 
       - name: 리소스 포함 확인
@@ -47,7 +48,7 @@ jobs:
             -RedirectStandardOutput res.txt -RedirectStandardError res_err.txt -PassThru -NoNewWindow
           if (-not $p.WaitForExit(60000)) { $p.Kill(); Get-Content res.txt, res_err.txt -Encoding utf8; throw '리소스 검사가 60초 안에 끝나지 않았습니다.' }
           Get-Content res.txt, res_err.txt -Encoding utf8
-          if ($p.ExitCode -ne 0) { throw '폰트가 exe에 포함되지 않았습니다.' }
+          if ($p.ExitCode -ne 0) { throw '폰트나 아이콘이 exe에 포함되지 않았습니다.' }
 
       - name: 워커 모드 스모크 테스트
         shell: pwsh

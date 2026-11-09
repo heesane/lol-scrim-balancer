@@ -936,6 +936,93 @@ class RoundButton(tk.Canvas):
     config = configure
 
 
+class Tooltip:
+    """마우스를 올리면 짧은 설명을 띄운다."""
+
+    def __init__(self, widget, text):
+        self.widget, self.text, self.window = widget, text, None
+        widget.bind('<Enter>', self.show, add='+')
+        widget.bind('<Leave>', self.hide, add='+')
+        widget.bind('<ButtonPress>', self.hide, add='+')
+
+    def show(self, event=None):
+        if self.window is not None:
+            return
+        x = self.widget.winfo_rootx() + self.widget.winfo_width() // 2
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + px(6)
+        self.window = tk.Toplevel(self.widget)
+        self.window.wm_overrideredirect(True)
+        label = tk.Label(self.window, text=self.text, bg=FG, fg=CARD, font=font(9), padx=px(8), pady=px(3))
+        label.pack()
+        self.window.update_idletasks()
+        self.window.wm_geometry(f'+{x - self.window.winfo_width() // 2}+{y}')
+
+    def hide(self, event=None):
+        if self.window is not None:
+            self.window.destroy()
+            self.window = None
+
+
+ICON_SIZES = (18, 23, 27, 36)  # 화면 배율 100·125·150·200%
+_icon_images = {}
+
+
+def load_icon(name, size=18):
+    """icons/ 폴더의 Lucide 아이콘 PNG(SVG에서 미리 변환)를 화면 배율에 맞는 크기로 불러온다."""
+    target = min(ICON_SIZES, key=lambda n: abs(n - px(size)))
+    key = (name, target)
+    if key not in _icon_images:
+        path = resource_path('icons', f'{name}-{target}.png')
+        try:
+            _icon_images[key] = tk.PhotoImage(file=path)
+        except tk.TclError:
+            _icon_images[key] = None
+    return _icon_images[key]
+
+
+class IconButton(tk.Canvas):
+    """둥근 아이콘 버튼. 아이콘은 Lucide SVG를 PNG로 변환해 함께 배포한 것을 쓴다."""
+
+    def __init__(self, parent, icon, command, tooltip, size=34, bg=CARD):
+        self.icon, self.command, self.size = icon, command, px(size)
+        super().__init__(parent, width=self.size, height=self.size, bg=bg, highlightthickness=0, bd=0, cursor='hand2', takefocus=1)
+        self._hover = self._focus = False
+        self.bind('<Enter>', lambda e: self._set('_hover', True))
+        self.bind('<Leave>', lambda e: self._set('_hover', False))
+        self.bind('<FocusIn>', lambda e: self._set('_focus', True))
+        self.bind('<FocusOut>', lambda e: self._set('_focus', False))
+        self.bind('<ButtonRelease-1>', lambda e: self.command() if 0 <= e.x <= self.size and 0 <= e.y <= self.size else None)
+        for key in ('<KeyPress-space>', '<KeyPress-Return>', '<KeyPress-KP_Enter>'):
+            self.bind(key, lambda e: (self.command(), 'break')[1])
+        Tooltip(self, tooltip)
+        self.draw()
+
+    def _set(self, name, value):
+        setattr(self, name, value)
+        self.draw()
+
+    def draw(self):
+        import math
+        self.delete('all')
+        s = self.size
+        outline = ACCENT if self._focus else LINE_STRONG
+        self.create_oval(1, 1, s - 2, s - 2, fill=MUTED if self._hover else CARD, outline=outline, width=max(2, px(2)) if self._focus else 1)
+        image = load_icon(self.icon)
+        if image is not None:
+            self.create_image(s / 2, s / 2, image=image)
+            return
+        # 아이콘 파일이 없으면 Canvas 선으로 대신 그린다.
+        color = FG if self._hover else SUB
+        if self.icon == 'refresh-cw':
+            c, r = s / 2, s * 0.24
+            points = []
+            for step in range(29):
+                angle = math.radians(70 - step * 10)  # 시계 방향으로 280도
+                points.extend([c + r * math.cos(angle), c - r * math.sin(angle)])
+            self.create_line(points, fill=color, width=max(2, px(2)), smooth=True, capstyle='round',
+                             arrow='last', arrowshape=(px(6), px(7), px(4)))
+
+
 class StatusDot(tk.Canvas):
     def __init__(self, parent, size=12, bg=CARD):
         super().__init__(parent, width=px(size), height=px(size), bg=bg, highlightthickness=0, bd=0)
@@ -1116,7 +1203,7 @@ class CollectorUI:
         lobby_head.pack(fill='x', pady=(0, px(10)))
         self.lobby_status = tk.StringVar(value='조회 중...')
         tk.Label(lobby_head, textvariable=self.lobby_status, bg=CARD, fg=SUB, font=font(10)).pack(side='left')
-        RoundButton(lobby_head, '새로고침', lambda: self.refresh_view('lobby'), height=30, size=9).pack(side='right')
+        IconButton(lobby_head, 'refresh-cw', lambda: self.refresh_view('lobby'), '참가자 새로고침').pack(side='right')
         teams_panel = tk.Frame(self.lobby_tab, bg=CARD)
         teams_panel.pack(fill='both', expand=True)
         self.teams_panel = teams_panel
@@ -1180,7 +1267,7 @@ class CollectorUI:
                               state='readonly', width=20, font=font(10))
         picker.pack(side='left')
         picker.bind('<<ComboboxSelected>>', lambda e: self.refresh_view('history'))
-        RoundButton(bar, '새로고침', lambda: self.refresh_view('history'), height=30, size=9).pack(side='right')
+        IconButton(bar, 'refresh-cw', lambda: self.refresh_view('history'), '기록 새로고침').pack(side='right')
         self.history_status = tk.StringVar(value='새로고침을 눌러 기록을 불러오세요. 행을 더블클릭하면 상세 정보를 봅니다.')
         tk.Label(self.history_tab, textvariable=self.history_status, bg=CARD, fg=SUB, font=font(10)).pack(anchor='w', pady=(0, px(8)))
         self.history_tree = self.make_table(self.history_tab, [('date', '일시'), ('mode', '종류'), ('result', '결과'), ('duration', '시간'), ('id', '경기 ID')])
@@ -2324,6 +2411,7 @@ if __name__ == '__main__':
     if '--check-resources' in sys.argv:
         # 빌드 확인용: exe에 폰트가 함께 묶였는지 검사한다.
         missing = [name for name in FONT_FILES if not os.path.exists(resource_path('fonts', name))]
+        missing += [f'refresh-cw-{n}.png' for n in ICON_SIZES if not os.path.exists(resource_path('icons', f'refresh-cw-{n}.png'))]
         print('누락된 리소스: ' + ', '.join(missing) if missing else '리소스 확인 완료', flush=True)
         sys.exit(1 if missing else 0)
     if '--worker' in sys.argv:
