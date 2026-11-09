@@ -65,6 +65,36 @@ jobs:
           $queue = Join-Path $env:LOCALAPPDATA 'ScrimCollector\lcu_pending_matches.json.lock'
           if (-not (Test-Path $queue)) { throw "데이터 폴더에 잠금 파일이 없습니다: $queue" }
 
+      - name: 메모리 사용량 측정 (참고용)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          function Report($label) {
+            $procs = Get-Process ScrimCollector -ErrorAction SilentlyContinue
+            $ws = ($procs | Measure-Object WorkingSet64 -Sum).Sum / 1MB
+            $pv = ($procs | Measure-Object PrivateMemorySize64 -Sum).Sum / 1MB
+            "{0}: 프로세스 {1}개, 작업 집합 {2:N1} MB, 전용 메모리 {3:N1} MB" -f $label, $procs.Count, $ws, $pv
+            $procs | ForEach-Object { "  - PID {0}: 작업 집합 {1:N1} MB, 전용 {2:N1} MB" -f $_.Id, ($_.WorkingSet64 / 1MB), ($_.PrivateMemorySize64 / 1MB) }
+          }
+          # 1) 화면만 띄운 상태 (상성 데이터·아이콘을 받을 시간을 준다)
+          $gui = Start-Process -FilePath dist\ScrimCollector.exe -PassThru
+          Start-Sleep -Seconds 25
+          Report '화면 실행 중'
+          Get-Process ScrimCollector -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Sleep -Seconds 2
+          # 2) 수집 워커만 실행한 상태 (표준 입력을 열어 둔 채 유지)
+          $info = New-Object System.Diagnostics.ProcessStartInfo
+          $info.FileName = (Resolve-Path dist\ScrimCollector.exe).Path
+          $info.Arguments = '--worker'
+          $info.UseShellExecute = $false
+          $info.RedirectStandardInput = $true
+          $info.RedirectStandardOutput = $true
+          $worker = [System.Diagnostics.Process]::Start($info)
+          Start-Sleep -Seconds 12
+          Report '수집 워커 실행 중'
+          $worker.StandardInput.WriteLine('')
+          if (-not $worker.WaitForExit(30000)) { Get-Process ScrimCollector -ErrorAction SilentlyContinue | Stop-Process -Force }
+
       - uses: actions/upload-artifact@v7
         with:
           name: ScrimCollector
