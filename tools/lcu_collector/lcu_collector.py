@@ -674,10 +674,33 @@ _ddragon_version = None
 
 
 def ddragon_version():
+    """최신 게임 버전. 실행마다 네트워크를 기다리지 않도록 하루 동안 디스크에 캐시한다."""
     global _ddragon_version
-    if _ddragon_version is None:
-        _ddragon_version = json.loads(http_get(DDRAGON + '/api/versions.json'))[0]
-    return _ddragon_version
+    if _ddragon_version is not None:
+        return _ddragon_version
+    path = os.path.join(ICON_DIR, 'version.json')
+    try:
+        age = time.time() - os.path.getmtime(path)
+        with open(path, encoding='utf-8') as f:
+            cached = json.load(f)['version']
+    except (OSError, ValueError, KeyError, TypeError):
+        age, cached = None, None
+    if cached and age is not None and age < 24 * 60 * 60:
+        _ddragon_version = cached
+        return cached
+    try:
+        version = json.loads(http_get(DDRAGON + '/api/versions.json', timeout=5))[0]
+    except Exception:
+        if cached:
+            _ddragon_version = cached  # 오프라인이면 마지막 버전의 캐시 아이콘을 쓴다
+            return cached
+        raise
+    os.makedirs(ICON_DIR, exist_ok=True)
+    with open(path + '.tmp', 'w', encoding='utf-8') as f:
+        json.dump({'version': version}, f)
+    os.replace(path + '.tmp', path)
+    _ddragon_version = version
+    return version
 
 
 def load_champion_keys():
@@ -1344,6 +1367,10 @@ class CollectorUI:
         scroll.pack(side='right', fill='y')
         self.counter_text.pack(side='left', fill='both', expand=True)
         text = self.counter_text
+        # 개요 칸은 칩을 끼워 넣은 화면이라 드래그 선택이 칩 뒤에 색 덩어리로 남는다. 선택을 막는다.
+        for sequence in ('<Button-1>', '<B1-Motion>', '<Double-Button-1>', '<Triple-Button-1>', '<Shift-Button-1>'):
+            text.bind(sequence, lambda e: 'break')
+        text.configure(selectbackground=CARD, inactiveselectbackground=CARD, exportselection=False)
         text.tag_configure('title', font=font(18, 'bold'))
         text.tag_configure('sub', foreground=SUB)
         text.tag_configure('section', font=font(12, 'bold'), spacing1=px(18), spacing3=px(6))
