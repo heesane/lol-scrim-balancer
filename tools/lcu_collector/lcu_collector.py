@@ -1,4 +1,4 @@
-# 단일 파일 내전 수집기: 이 파일만 실행하세요.
+# 단일 파일 내전 수집기: 이 파일만 실행하세요. exe 빌드·배포는 같은 폴더의 README.md를 참고하세요.
 # lcu_collector.py - 롤 클라이언트 로컬 LCU API 사설 내전 10인 스탯 자동 수집기 (완성본)
 import os
 import sys
@@ -12,6 +12,26 @@ import re  # 딥롤 페이지 파싱에 필요 (누락 시 NameError가 except�
 import urllib.error
 
 SERVER_URL = "https://lol-scrim-balancer.vercel.app/api/sync"
+
+FROZEN = getattr(sys, 'frozen', False)
+
+
+def data_dir():
+    """대기 큐·아카이브·백업을 둘 폴더를 정한다.
+
+    스크립트로 실행하면 기존처럼 이 파일이 있는 폴더를 쓴다.
+    PyInstaller onefile exe는 임시 폴더(_MEIPASS)에 풀리므로
+    %LOCALAPPDATA%\\ScrimCollector에 두고, 없으면 exe가 있는 폴더를 쓴다.
+    """
+    if not FROZEN:
+        return os.path.dirname(os.path.abspath(__file__))
+    local = os.environ.get('LOCALAPPDATA')
+    folder = os.path.join(local, 'ScrimCollector') if local else os.path.dirname(os.path.abspath(sys.executable))
+    os.makedirs(folder, exist_ok=True)
+    return folder
+
+
+DATA_DIR = data_dir()
 
 def test_lcu_connection(port, password):
     ctx = ssl.create_default_context()
@@ -123,7 +143,7 @@ def push_match_to_cloud(match_data):
     return False
 
 
-QUEUE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lcu_pending_matches.json")
+QUEUE_PATH = os.path.join(DATA_DIR, "lcu_pending_matches.json")
 
 def save_pending(pending):
     temporary = QUEUE_PATH + ".tmp"
@@ -526,7 +546,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from tkinter.scrolledtext import ScrolledText
 
-BASE = Path(__file__).resolve().parent
+BASE = Path(DATA_DIR)
 collector = sys.modules[__name__]
 
 
@@ -944,11 +964,16 @@ class CollectorUI:
         if self.process is not None:
             return
         executable = Path(sys.executable)
-        if executable.name.lower() == 'pythonw.exe':
-            executable = executable.with_name('python.exe')
+        if FROZEN:
+            # exe로 묶이면 sys.executable이 exe 자신이므로 인자만 넘긴다.
+            command = [str(executable), '--worker']
+        else:
+            if executable.name.lower() == 'pythonw.exe':
+                executable = executable.with_name('python.exe')
+            command = [str(executable), '-u', str(Path(__file__).resolve()), '--worker']
         env = dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUNBUFFERED='1')
         try:
-            process = subprocess.Popen([str(executable), '-u', str(Path(__file__).resolve()), '--worker'], cwd=BASE, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace', env=env, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+            process = subprocess.Popen(command, cwd=BASE, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace', env=env, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
         except OSError as exc:
             messagebox.showerror('실행 오류', str(exc))
             return
@@ -1038,6 +1063,12 @@ class CollectorUI:
 
 if __name__ == '__main__':
     if '--worker' in sys.argv:
+        # exe에서는 PYTHONIOENCODING·-u가 적용되지 않을 수 있어 파이프 인코딩과 버퍼링을 직접 맞춘다.
+        for stream in (sys.stdout, sys.stderr):
+            if stream is not None and hasattr(stream, 'reconfigure'):
+                stream.reconfigure(encoding='utf-8', errors='replace', line_buffering=True)
+        if sys.stdin is not None and hasattr(sys.stdin, 'reconfigure'):
+            sys.stdin.reconfigure(encoding='utf-8', errors='replace')
         try:
             run_worker()
         except Exception as exc:

@@ -1,0 +1,72 @@
+name: 내전 수집기 exe 빌드
+
+on:
+  push:
+    # 태그 푸시는 Release까지 만들고, 수집기 파일이 바뀐 브랜치 푸시는 빌드·스모크 테스트만 한다.
+    tags:
+      - 'collector-v*'
+    branches:
+      - '**'
+    paths:
+      - 'tools/lcu_collector/**'
+      - '.github/workflows/build-collector.yml'
+  pull_request:
+    paths:
+      - 'tools/lcu_collector/**'
+      - '.github/workflows/build-collector.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: PyInstaller 설치
+        run: python -m pip install --upgrade pip pyinstaller
+
+      - name: exe 빌드
+        run: >
+          pyinstaller --onefile --windowed --clean --noconfirm
+          --name ScrimCollector
+          tools/lcu_collector/lcu_collector.py
+
+      - name: 워커 모드 스모크 테스트
+        shell: pwsh
+        run: |
+          # 표준 입력에 줄바꿈을 넣어 워커가 곧바로 정상 종료하는지 확인한다.
+          Set-Content -Path stdin.txt -Value ''
+          $p = Start-Process -FilePath dist\ScrimCollector.exe -ArgumentList '--worker' `
+            -RedirectStandardInput stdin.txt -RedirectStandardOutput out.txt -RedirectStandardError err.txt `
+            -PassThru -NoNewWindow
+          if (-not $p.WaitForExit(90000)) { $p.Kill(); throw '워커가 90초 안에 종료되지 않았습니다.' }
+          Get-Content out.txt, err.txt -Encoding utf8
+          if ($p.ExitCode -ne 0) { throw "워커 종료 코드 $($p.ExitCode)" }
+          $queue = Join-Path $env:LOCALAPPDATA 'ScrimCollector\lcu_pending_matches.json.lock'
+          if (-not (Test-Path $queue)) { throw "데이터 폴더에 잠금 파일이 없습니다: $queue" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ScrimCollector
+          path: dist/ScrimCollector.exe
+
+      - name: Release에 첨부
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/ScrimCollector.exe --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/ScrimCollector.exe \
+              --title "내전 수집기 $GITHUB_REF_NAME" \
+              --notes "Windows용 내전 결과 수집기입니다. ScrimCollector.exe를 내려받아 실행하세요."
+          fi

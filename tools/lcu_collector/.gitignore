@@ -1,0 +1,8 @@
+# 수집기가 실행 중에 만드는 로컬 데이터
+lcu_pending_matches.json*
+lcu_match_archive/
+lcu_server_backups/
+# PyInstaller 산출물
+build/
+dist/
+*.spec
