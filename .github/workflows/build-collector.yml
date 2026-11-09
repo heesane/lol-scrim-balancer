@@ -23,9 +23,9 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -52,7 +52,7 @@ jobs:
           $queue = Join-Path $env:LOCALAPPDATA 'ScrimCollector\lcu_pending_matches.json.lock'
           if (-not (Test-Path $queue)) { throw "데이터 폴더에 잠금 파일이 없습니다: $queue" }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ScrimCollector
           path: dist/ScrimCollector.exe
