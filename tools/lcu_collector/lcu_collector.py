@@ -1561,7 +1561,15 @@ class CollectorUI:
         self.log = tk.Text(log_box, wrap='word', font=font(10), bg=STRIPE, fg=FG, selectbackground=ACCENT_SOFT, selectforeground=FG, inactiveselectbackground=ACCENT_TINT, relief='flat', bd=0,
                            padx=px(14), pady=px(12), state='disabled', highlightthickness=0, spacing1=px(2), spacing3=px(2))
         log_scroll = ttk.Scrollbar(log_box, orient='vertical', command=self.log.yview)
-        self.log.configure(yscrollcommand=log_scroll.set)
+        # 맨 아래를 보고 있는지는 화면이 갱신된 뒤 스크롤바가 받는 위치로 판단한다. 줄을 넣은 직후의
+        # yview()는 아직 갱신되지 않아, 여러 줄이 한꺼번에 들어오면 따라가기가 멈추기 때문이다.
+        self.log_follow = True
+        def log_scrolled(first, last):
+            log_scroll.set(first, last)
+            self.log_follow = float(last) >= 0.999
+        self.log.configure(yscrollcommand=log_scrolled)
+        # Text는 크기가 바뀌면 맨 위 줄을 기준으로 남아, 맨 아래를 보다 창을 줄이면 따라가기가 풀린다.
+        self.log.bind('<Configure>', lambda e: self.log.see('end') if self.log_follow else None, add='+')
         log_scroll.pack(side='right', fill='y')
         self.log.pack(side='left', fill='both', expand=True)
         for tag, color in [('ok', GREEN), ('warn', AMBER), ('error', RED), ('info', SUB), ('time', '#8B94A3')]:
@@ -2887,7 +2895,7 @@ class CollectorUI:
 
     def append(self, text):
         # 위로 올려 이전 로그를 읽는 중이면 새 줄이 들어와도 맨 아래로 끌어내리지 않는다.
-        at_bottom = self.log.yview()[1] >= 0.999
+        at_bottom = self.log_follow
         self.log.configure(state='normal')
         stamp = datetime.datetime.now().strftime('%H:%M:%S')
         for line in text.splitlines(keepends=True):
