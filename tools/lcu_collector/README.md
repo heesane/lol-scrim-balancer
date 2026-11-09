@@ -39,5 +39,16 @@ macOS나 Linux에서는 Windows용 exe를 직접 빌드할 수 없습니다.
 
 ```bat
 pip install pyinstaller
-pyinstaller --onefile --windowed --name ScrimCollector tools\lcu_collector\lcu_collector.py
+pyinstaller --onefile --windowed --name ScrimCollector --add-data "tools\lcu_collector\fonts;fonts" tools\lcu_collector\lcu_collector.py
 ```
+
+## 글꼴
+
+화면 글꼴은 웹앱과 같은 [Pretendard](https://github.com/orioncactus/pretendard)(v1.3.9, Regular·Bold)입니다.
+`fonts/` 폴더의 글꼴을 exe에 함께 넣고, 실행할 때 이 프로그램에만 임시로 등록합니다(사용자 PC에 설치하지 않음).
+글꼴 파일이 없으면 맑은 고딕으로 표시합니다. Pretendard는 SIL Open Font License 1.1로 배포되며 라이선스 전문은 `fonts/Pretendard-LICENSE.txt`에 있습니다.
+
+## 카운터 정보
+
+챔피언 선택에 들어가면 '카운터 정보' 탭에서 내 챔피언의 상성을 보여 줍니다.
+데이터는 실행할 때 [vschamp.lol](https://vschamp.lol/)에서 받아 데이터 폴더에 하루 동안 캐시하며, 저장소와 exe에는 포함하지 않습니다.

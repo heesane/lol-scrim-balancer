@@ -543,6 +543,7 @@ import subprocess
 import sys
 import threading
 import tkinter as tk
+import tkinter.font as tkfont
 from tkinter import ttk, messagebox
 
 BASE = Path(DATA_DIR)
@@ -728,11 +729,29 @@ GREEN = '#16A34A'
 AMBER = '#D97706'
 DISABLED = '#C9CED8'
 STRIPE = '#F8F9FB'
-FONT = 'Malgun Gothic' if sys.platform == 'win32' else 'Apple SD Gothic Neo'
+FONT_FILES = ('Pretendard-Regular.ttf', 'Pretendard-Bold.ttf')
+FALLBACK_FONT = 'Malgun Gothic' if sys.platform == 'win32' else 'Apple SD Gothic Neo'
+FONT = FALLBACK_FONT
 SCALE = 1.0
 TIER_NAMES = {'IRON': '아이언', 'BRONZE': '브론즈', 'SILVER': '실버', 'GOLD': '골드', 'PLATINUM': '플래티넘',
               'EMERALD': '에메랄드', 'DIAMOND': '다이아몬드', 'MASTER': '마스터', 'GRANDMASTER': '그랜드마스터',
               'CHALLENGER': '챌린저'}
+
+
+def resource_path(*parts):
+    """exe 안에 묶인 파일은 _MEIPASS, 스크립트 실행 시에는 이 파일 옆에서 찾는다."""
+    return os.path.join(getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__))), *parts)
+
+
+def register_fonts():
+    """함께 배포한 Pretendard를 이 프로세스에만 임시 등록한다. 사용자 PC에 설치하지 않는다."""
+    if sys.platform != 'win32':
+        return
+    import ctypes
+    for name in FONT_FILES:
+        path = resource_path('fonts', name)
+        if os.path.exists(path):
+            ctypes.windll.gdi32.AddFontResourceExW(path, 0x10, 0)  # 0x10 = FR_PRIVATE
 
 
 def px(value):
@@ -786,7 +805,7 @@ class RoundButton(tk.Canvas):
 
     def __init__(self, parent, text, command=None, kind='secondary', width=None, height=36, size=10, bg=CARD, state='normal'):
         self.text, self.command, self.kind, self.size = text, command, kind, size
-        measure = __import__('tkinter.font', fromlist=['Font']).Font(font=font(size, 'bold')).measure(text)
+        measure = tkfont.Font(font=font(size, 'bold')).measure(text)
         self.w = px(width) if width else measure + px(34)
         self.h = px(height)
         super().__init__(parent, width=self.w, height=self.h, bg=bg, highlightthickness=0, bd=0, cursor='hand2')
@@ -858,7 +877,8 @@ def status_color(text):
 
 class CollectorUI:
     def __init__(self, root):
-        global SCALE
+        global SCALE, FONT
+        FONT = 'Pretendard' if 'Pretendard' in tkfont.families(root) else FALLBACK_FONT
         self.root = root
         self.process = None
         self.stopping = False
@@ -1753,13 +1773,19 @@ class CollectorUI:
 
 
 if __name__ == '__main__':
+    # exe에서는 PYTHONIOENCODING·-u가 적용되지 않아 표준 입출력이 cp1252(charmap)로 잡힐 수 있다.
+    # 한글 출력에서 UnicodeEncodeError가 나지 않도록 모든 실행 모드에서 먼저 UTF-8로 맞춘다.
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None and hasattr(stream, 'reconfigure'):
+            stream.reconfigure(encoding='utf-8', errors='replace', line_buffering=True)
+    if sys.stdin is not None and hasattr(sys.stdin, 'reconfigure'):
+        sys.stdin.reconfigure(encoding='utf-8', errors='replace')
+    if '--check-resources' in sys.argv:
+        # 빌드 확인용: exe에 폰트가 함께 묶였는지 검사한다.
+        missing = [name for name in FONT_FILES if not os.path.exists(resource_path('fonts', name))]
+        print('누락된 리소스: ' + ', '.join(missing) if missing else '리소스 확인 완료', flush=True)
+        sys.exit(1 if missing else 0)
     if '--worker' in sys.argv:
-        # exe에서는 PYTHONIOENCODING·-u가 적용되지 않을 수 있어 파이프 인코딩과 버퍼링을 직접 맞춘다.
-        for stream in (sys.stdout, sys.stderr):
-            if stream is not None and hasattr(stream, 'reconfigure'):
-                stream.reconfigure(encoding='utf-8', errors='replace', line_buffering=True)
-        if sys.stdin is not None and hasattr(sys.stdin, 'reconfigure'):
-            sys.stdin.reconfigure(encoding='utf-8', errors='replace')
         try:
             run_worker()
         except Exception as exc:
@@ -1770,6 +1796,10 @@ if __name__ == '__main__':
             import ctypes
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
         except (AttributeError, OSError):
+            pass
+        try:
+            register_fonts()
+        except OSError:
             pass
         app = tk.Tk()
         CollectorUI(app)

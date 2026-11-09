@@ -22,6 +22,7 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
 
@@ -36,7 +37,17 @@ jobs:
         run: >
           pyinstaller --onefile --windowed --clean --noconfirm
           --name ScrimCollector
+          --add-data "tools/lcu_collector/fonts;fonts"
           tools/lcu_collector/lcu_collector.py
+
+      - name: 리소스 포함 확인
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath dist\ScrimCollector.exe -ArgumentList '--check-resources' `
+            -RedirectStandardOutput res.txt -RedirectStandardError res_err.txt -PassThru -NoNewWindow
+          if (-not $p.WaitForExit(60000)) { $p.Kill(); Get-Content res.txt, res_err.txt -Encoding utf8; throw '리소스 검사가 60초 안에 끝나지 않았습니다.' }
+          Get-Content res.txt, res_err.txt -Encoding utf8
+          if ($p.ExitCode -ne 0) { throw '폰트가 exe에 포함되지 않았습니다.' }
 
       - name: 워커 모드 스모크 테스트
         shell: pwsh
