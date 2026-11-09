@@ -544,7 +544,6 @@ import sys
 import threading
 import tkinter as tk
 from tkinter import ttk, messagebox
-from tkinter.scrolledtext import ScrolledText
 
 BASE = Path(DATA_DIR)
 collector = sys.modules[__name__]
@@ -600,8 +599,157 @@ def resolve_lobby_members(data, port, password, name_cache):
     return result
 
 
+# ---------- 화면 디자인 ----------
+# 웹앱(index.html)의 밝은 테마 토큰에 맞춘 색. 포인트 색은 ACCENT 한 곳만 바꾸면 된다.
+BG = '#F3F4F7'
+CARD = '#FFFFFF'
+MUTED = '#F1F3F6'
+LINE = '#E2E5EB'
+LINE_STRONG = '#D0D5DE'
+FG = '#161B24'
+SUB = '#5C6678'
+ACCENT = '#D6A23A'
+ACCENT_HOVER = '#E2B24E'
+ACCENT_FG = '#141006'
+ACCENT_SOFT = '#EED9A8'
+ACCENT_TINT = '#FBF4E4'
+BLUE = '#2563EB'
+RED = '#DC2626'
+GREEN = '#16A34A'
+AMBER = '#D97706'
+DISABLED = '#C9CED8'
+STRIPE = '#F8F9FB'
+FONT = 'Malgun Gothic' if sys.platform == 'win32' else 'Apple SD Gothic Neo'
+SCALE = 1.0
+TIER_NAMES = {'IRON': '아이언', 'BRONZE': '브론즈', 'SILVER': '실버', 'GOLD': '골드', 'PLATINUM': '플래티넘',
+              'EMERALD': '에메랄드', 'DIAMOND': '다이아몬드', 'MASTER': '마스터', 'GRANDMASTER': '그랜드마스터',
+              'CHALLENGER': '챌린저'}
+
+
+def px(value):
+    return int(round(value * SCALE))
+
+
+def font(size, weight='normal'):
+    return (FONT, size, weight)
+
+
+def round_rect(canvas, x1, y1, x2, y2, r, **kw):
+    r = max(0, min(r, (x2 - x1) / 2, (y2 - y1) / 2))
+    points = [x1 + r, y1, x2 - r, y1, x2, y1, x2, y1 + r, x2, y2 - r, x2, y2,
+              x2 - r, y2, x1 + r, y2, x1, y2, x1, y2 - r, x1, y1 + r, x1, y1]
+    return canvas.create_polygon(points, smooth=True, **kw)
+
+
+class RoundedCard(tk.Canvas):
+    """둥근 테두리 카드. 내용은 self.body(tk.Frame)에 넣는다."""
+
+    def __init__(self, parent, title=None, subtitle=None, border=ACCENT_SOFT, pad=18, outer=BG):
+        super().__init__(parent, bg=outer, highlightthickness=0, bd=0)
+        self.border = border
+        self.pad = px(pad)
+        self.body = tk.Frame(self, bg=CARD)
+        if title:
+            tk.Label(self.body, text=title, bg=CARD, fg=FG, font=font(13, 'bold')).pack(pady=(0, 2))
+        if subtitle:
+            tk.Label(self.body, text=subtitle, bg=CARD, fg=SUB, font=font(9)).pack(pady=(0, px(8)))
+        self.window = self.create_window(0, 0, window=self.body, anchor='nw')
+        self.bind('<Configure>', self.redraw)
+
+    def redraw(self, event=None):
+        w, h = self.winfo_width(), self.winfo_height()
+        self.delete('shape')
+        round_rect(self, 1, 1, w - 2, h - 2, px(16), fill=CARD, outline=self.border, width=max(1, px(1.2)), tags='shape')
+        self.tag_lower('shape')
+        self.coords(self.window, self.pad, self.pad)
+        self.itemconfigure(self.window, width=max(1, w - 2 * self.pad), height=max(1, h - 2 * self.pad))
+
+
+class RoundButton(tk.Canvas):
+    """둥근 버튼. configure(state='disabled'|'normal')을 ttk.Button처럼 받는다."""
+
+    KINDS = {
+        'primary': (ACCENT, ACCENT_HOVER, ACCENT_FG, ''),
+        'secondary': (CARD, MUTED, FG, LINE_STRONG),
+        'pill': (CARD, ACCENT_TINT, '#9A6B12', ACCENT_SOFT),
+        'danger': (CARD, '#FEF2F2', RED, '#F3B4B4'),
+    }
+
+    def __init__(self, parent, text, command=None, kind='secondary', width=None, height=36, size=10, bg=CARD, state='normal'):
+        self.text, self.command, self.kind, self.size = text, command, kind, size
+        measure = __import__('tkinter.font', fromlist=['Font']).Font(font=font(size, 'bold')).measure(text)
+        self.w = px(width) if width else measure + px(34)
+        self.h = px(height)
+        super().__init__(parent, width=self.w, height=self.h, bg=bg, highlightthickness=0, bd=0, cursor='hand2')
+        self._state, self._hover = state, False
+        self.bind('<Enter>', lambda e: self._set_hover(True))
+        self.bind('<Leave>', lambda e: self._set_hover(False))
+        self.bind('<ButtonRelease-1>', self._click)
+        self.bind('<Configure>', lambda e: self.draw())
+        self.draw()
+
+    def _set_hover(self, value):
+        self._hover = value
+        self.draw()
+
+    def _click(self, event):
+        if self._state != 'disabled' and self.command and 0 <= event.x <= self.winfo_width() and 0 <= event.y <= self.winfo_height():
+            self.command()
+
+    def draw(self):
+        self.delete('all')
+        w, h = max(self.winfo_width(), 2), max(self.winfo_height(), 2)
+        if w <= 2:
+            w, h = self.w, self.h
+        fill, hover, fg, outline = self.KINDS[self.kind]
+        if self._state == 'disabled':
+            fill, fg, outline = (MUTED, DISABLED, LINE) if self.kind != 'primary' else (DISABLED, CARD, '')
+        elif self._hover:
+            fill = hover
+        round_rect(self, 1, 1, w - 2, h - 2, h / 2 - 1, fill=fill, outline=outline or fill, width=1)
+        self.create_text(w / 2, h / 2, text=self.text, fill=fg, font=font(self.size, 'bold'))
+        super().configure(cursor='arrow' if self._state == 'disabled' else 'hand2')
+
+    def configure(self, cnf=None, **kw):
+        state = kw.pop('state', None)
+        if state is not None:
+            self._state = state
+            self.draw()
+        if cnf or kw:
+            return super().configure(cnf, **kw)
+
+    config = configure
+
+
+class StatusDot(tk.Canvas):
+    def __init__(self, parent, size=12, bg=CARD):
+        super().__init__(parent, width=px(size), height=px(size), bg=bg, highlightthickness=0, bd=0)
+        self.size = px(size)
+        self.set(DISABLED)
+
+    def set(self, color):
+        self.delete('all')
+        s = self.size
+        self.create_oval(1, 1, s - 1, s - 1, fill=color, outline=color)
+
+
+def status_color(text):
+    if '오류' in text or '실패' in text:
+        return RED
+    if '수집 중지' in text:
+        return DISABLED
+    if '게임 중' in text:
+        return BLUE
+    if '제출 완료' in text:
+        return GREEN
+    if any(word in text for word in ('확인 중', '제출 대기', '중지 중')):
+        return AMBER
+    return GREEN
+
+
 class CollectorUI:
     def __init__(self, root):
+        global SCALE
         self.root = root
         self.process = None
         self.stopping = False
@@ -615,88 +763,280 @@ class CollectorUI:
         self.lobby_name_cache = {}
         self.last_lobby_data = None
         self.roster_retained = False
-        root.title('내전 결과 수집기 · v2.0')
-        root.geometry('1000x680')
-        root.minsize(800, 560)
-        root.configure(bg='#f4f6fa')
+        self.icon_cache = {}
+        self.avatar_image = None
+        SCALE = max(1.0, root.winfo_fpixels('1i') / 96)
+        root.title('내전 결과 수집기')
+        root.geometry(f'{px(980)}x{px(760)}')
+        root.minsize(px(860), px(660))
+        root.configure(bg=BG)
+        root.option_add('*TCombobox*Listbox.font', font(10))
+        root.option_add('*TCombobox*Listbox.background', CARD)
+        root.option_add('*TCombobox*Listbox.selectBackground', ACCENT_TINT)
+        root.option_add('*TCombobox*Listbox.selectForeground', FG)
         style = ttk.Style()
         style.theme_use('clam')
-        style.configure('TFrame', background='#f4f6fa')
-        style.configure('TLabel', background='#f4f6fa', font=('맑은 고딕', 10))
-        style.configure('Title.TLabel', font=('맑은 고딕', 20, 'bold'))
-        style.configure('Treeview', font=('맑은 고딕', 10), rowheight=32)
-        style.configure('Treeview.Heading', font=('맑은 고딕', 10, 'bold'), padding=8)
-        style.configure('TNotebook.Tab', padding=(18, 10), font=('맑은 고딕', 10))
-        style.configure('Status.TLabel', font=('맑은 고딕', 12, 'bold'), foreground='#1d4ed8')
-        style.configure('TButton', font=('맑은 고딕', 10), padding=(16, 9))
-        frame = ttk.Frame(root, padding=24)
+        style.configure('Treeview', background=CARD, fieldbackground=CARD, foreground=FG, font=font(10),
+                        rowheight=px(30), borderwidth=0, bordercolor=LINE, lightcolor=CARD, darkcolor=CARD)
+        style.map('Treeview', background=[('selected', ACCENT_TINT)], foreground=[('selected', FG)])
+        style.configure('Treeview.Heading', background=MUTED, foreground=SUB, font=font(9, 'bold'), padding=px(6),
+                        borderwidth=0, relief='flat', bordercolor=LINE, lightcolor=MUTED, darkcolor=MUTED)
+        style.map('Treeview.Heading', background=[('active', MUTED)])
+        style.layout('Treeview', [('Treeview.treearea', {'sticky': 'nswe'})])
+        for orient in ('Vertical', 'Horizontal'):
+            style.configure(f'{orient}.TScrollbar', background=LINE, troughcolor=CARD, bordercolor=CARD,
+                            lightcolor=LINE, darkcolor=LINE, arrowcolor=SUB, gripcount=0, arrowsize=px(11))
+            style.map(f'{orient}.TScrollbar', background=[('active', LINE_STRONG)])
+        style.configure('TCombobox', fieldbackground=MUTED, background=MUTED, foreground=FG, bordercolor=LINE,
+                        lightcolor=MUTED, darkcolor=MUTED, arrowcolor=SUB, padding=px(5))
+        style.map('TCombobox', fieldbackground=[('readonly', MUTED)], selectbackground=[('readonly', MUTED)],
+                  selectforeground=[('readonly', FG)])
+
+        frame = tk.Frame(root, bg=BG, padx=px(22), pady=px(16))
         frame.pack(fill='both', expand=True)
-        ttk.Label(frame, text='내전 결과 수집기', style='Title.TLabel').pack(anchor='w')
-        ttk.Label(frame, text='롤 클라이언트에서 경기 결과를 수집하고 웹앱에 동기화합니다.').pack(anchor='w', pady=(6, 18))
+
+        # 상단 바: 제목과 웹앱 바로가기
+        top = tk.Frame(frame, bg=BG)
+        top.pack(fill='x', pady=(0, px(12)))
+        RoundButton(top, '내전 결과 수집기 · v2.0', kind='pill', height=30, size=9, bg=BG,
+                    command=lambda: None).pack(side='left')
+        RoundButton(top, '웹앱 열기', kind='pill', height=30, size=9, bg=BG,
+                    command=lambda: __import__('webbrowser').open(SERVER_URL.rsplit('/api/', 1)[0])).pack(side='right')
+
+        grid = tk.Frame(frame, bg=BG)
+        grid.pack(fill='both', expand=True)
+        grid.columnconfigure(0, weight=1, uniform='col')
+        grid.columnconfigure(1, weight=1, uniform='col')
+        grid.rowconfigure(0, minsize=px(232))
+        grid.rowconfigure(1, weight=1)
+
+        # 카드 1: 롤 클라이언트에 로그인한 계정
+        account = RoundedCard(grid, '내 계정', '롤 클라이언트에 접속한 계정 정보입니다')
+        account.grid(row=0, column=0, sticky='nsew', padx=(0, px(8)), pady=(0, px(14)))
+        info = tk.Frame(account.body, bg=CARD)
+        info.pack(expand=True)
+        self.avatar = tk.Canvas(info, width=px(76), height=px(76), bg=CARD, highlightthickness=0, bd=0)
+        self.avatar.grid(row=0, column=0, rowspan=4, padx=(0, px(16)))
+        self.account_name = tk.StringVar(value='연결 대기 중')
+        self.account_level = tk.StringVar(value='')
+        self.account_rank = tk.StringVar(value='')
+        self.account_conn = tk.StringVar(value='롤 클라이언트를 확인하는 중...')
+        tk.Label(info, textvariable=self.account_name, bg=CARD, fg=FG, font=font(15, 'bold'), anchor='w').grid(row=0, column=1, sticky='w')
+        tk.Label(info, textvariable=self.account_level, bg=CARD, fg=SUB, font=font(10), anchor='w').grid(row=1, column=1, sticky='w', pady=(px(2), 0))
+        tk.Label(info, textvariable=self.account_rank, bg=CARD, fg='#9A6B12', font=font(10, 'bold'), anchor='w').grid(row=2, column=1, sticky='w', pady=(px(2), 0))
+        conn = tk.Frame(info, bg=CARD)
+        conn.grid(row=3, column=1, sticky='w', pady=(px(8), 0))
+        self.conn_dot = StatusDot(conn, 9)
+        self.conn_dot.pack(side='left', padx=(0, px(6)))
+        tk.Label(conn, textvariable=self.account_conn, bg=CARD, fg=SUB, font=font(9)).pack(side='left')
+        self.draw_avatar(None, '?')
+
+        # 카드 2: 수집 상태와 시작/중지
+        control = RoundedCard(grid, '결과 수집', '내전이 끝나면 결과를 웹앱에 자동으로 올립니다')
+        control.grid(row=0, column=1, sticky='nsew', padx=(px(8), 0), pady=(0, px(14)))
+        status_row = tk.Frame(control.body, bg=MUTED, padx=px(14), pady=px(10))
+        status_row.pack(fill='x', pady=(px(2), px(12)))
+        self.status_dot = StatusDot(status_row, 12, bg=MUTED)
+        self.status_dot.pack(side='left', padx=(0, px(10)))
         self.status = tk.StringVar(value='대기중 · 수집 중지')
-        ttk.Label(frame, textvariable=self.status, style='Status.TLabel').pack(anchor='w', pady=(0, 12))
-        buttons = ttk.Frame(frame)
-        buttons.pack(fill='x', pady=(0, 16))
-        self.start_button = ttk.Button(buttons, text='수집 시작', command=self.start)
-        self.start_button.pack(side='left')
-        self.stop_button = ttk.Button(buttons, text='중지', command=self.stop, state='disabled')
-        self.stop_button.pack(side='left', padx=8)
-        ttk.Button(buttons, text='로그 지우기', command=self.clear).pack(side='right')
-        ttk.Button(buttons, text='로그 저장', command=self.save_log).pack(side='right', padx=8)
-        ttk.Button(buttons, text='웹앱 열기', command=lambda: __import__('webbrowser').open(SERVER_URL.rsplit('/api/', 1)[0])).pack(side='right')
-        self.tabs = ttk.Notebook(frame)
-        self.tabs.pack(fill='both', expand=True)
-        log_tab = ttk.Frame(self.tabs)
-        self.lobby_tab = ttk.Frame(self.tabs, padding=12)
-        self.history_tab = ttk.Frame(self.tabs, padding=12)
-        self.tabs.add(self.lobby_tab, text='현재 방 참가자')
-        self.tabs.add(log_tab, text='실행 로그')
-        self.tabs.add(self.history_tab, text='매치 히스토리')
+        tk.Label(status_row, textvariable=self.status, bg=MUTED, fg=FG, font=font(11, 'bold'), anchor='w').pack(side='left', fill='x')
+        self.status.trace_add('write', lambda *a: self.status_dot.set(status_color(self.status.get())))
+        buttons = tk.Frame(control.body, bg=CARD)
+        buttons.pack(fill='x')
+        buttons.columnconfigure(0, weight=3)
+        buttons.columnconfigure(1, weight=1)
+        self.start_button = RoundButton(buttons, '수집 시작', self.start, kind='primary', height=40, size=11)
+        self.start_button.grid(row=0, column=0, sticky='ew', padx=(0, px(8)))
+        self.stop_button = RoundButton(buttons, '중지', self.stop, kind='danger', height=40, size=11, state='disabled')
+        self.stop_button.grid(row=0, column=1, sticky='ew')
+        tk.Label(control.body, text='전송에 실패한 경기는 로컬에 보관했다가 다시 보냅니다.', bg=CARD, fg=SUB,
+                 font=font(9)).pack(pady=(px(10), 0))
+
+        # 카드 3: 참가자 · 로그 · 매치 히스토리
+        main = RoundedCard(grid, border=LINE, pad=16)
+        main.grid(row=1, column=0, columnspan=2, sticky='nsew')
+        tabs_bar = tk.Frame(main.body, bg=CARD)
+        tabs_bar.pack(fill='x')
+        tk.Frame(main.body, bg=LINE, height=1).pack(fill='x', pady=(0, px(12)))
+        pages = tk.Frame(main.body, bg=CARD)
+        pages.pack(fill='both', expand=True)
+        pages.rowconfigure(0, weight=1)
+        pages.columnconfigure(0, weight=1)
+        self.lobby_tab = tk.Frame(pages, bg=CARD)
+        log_tab = tk.Frame(pages, bg=CARD)
+        self.history_tab = tk.Frame(pages, bg=CARD)
+        self.tab_buttons = {}
+        for name, page in [('현재 방 참가자', self.lobby_tab), ('실행 로그', log_tab), ('매치 히스토리', self.history_tab)]:
+            page.grid(row=0, column=0, sticky='nsew')
+            holder = tk.Frame(tabs_bar, bg=CARD)
+            holder.pack(side='left', padx=(0, px(18)))
+            label = tk.Label(holder, text=name, bg=CARD, fg=SUB, font=font(11, 'bold'), cursor='hand2', pady=px(6))
+            label.pack()
+            bar = tk.Frame(holder, bg=CARD, height=px(3))
+            bar.pack(fill='x')
+            label.bind('<Button-1>', lambda e, p=page: self.show_tab(p))
+            self.tab_buttons[page] = (label, bar)
+
+        # 참가자 탭
+        lobby_head = tk.Frame(self.lobby_tab, bg=CARD)
+        lobby_head.pack(fill='x', pady=(0, px(10)))
         self.lobby_status = tk.StringVar(value='조회 중...')
-        ttk.Label(self.lobby_tab, textvariable=self.lobby_status).pack(anchor='w')
-        ttk.Button(self.lobby_tab, text='새로고침', command=lambda: self.refresh_view('lobby')).pack(anchor='e', pady=8)
-        teams_panel = ttk.Frame(self.lobby_tab)
+        tk.Label(lobby_head, textvariable=self.lobby_status, bg=CARD, fg=SUB, font=font(10)).pack(side='left')
+        RoundButton(lobby_head, '새로고침', lambda: self.refresh_view('lobby'), height=30, size=9).pack(side='right')
+        teams_panel = tk.Frame(self.lobby_tab, bg=CARD)
         teams_panel.pack(fill='both', expand=True)
         teams_panel.columnconfigure(0, weight=1, uniform='team')
         teams_panel.columnconfigure(1, weight=1, uniform='team')
         teams_panel.rowconfigure(0, weight=1)
-        blue_panel = ttk.Frame(teams_panel, padding=(0, 0, 8, 0))
-        red_panel = ttk.Frame(teams_panel, padding=(8, 0, 0, 0))
-        blue_panel.grid(row=0, column=0, sticky='nsew')
-        red_panel.grid(row=0, column=1, sticky='nsew')
         self.blue_title = tk.StringVar(value='블루팀 · 0명')
         self.red_title = tk.StringVar(value='레드팀 · 0명')
-        ttk.Label(blue_panel, textvariable=self.blue_title, foreground='#2563eb', font=('맑은 고딕', 14, 'bold')).pack(anchor='w', pady=(0, 10))
-        ttk.Label(red_panel, textvariable=self.red_title, foreground='#dc2626', font=('맑은 고딕', 14, 'bold')).pack(anchor='w', pady=(0, 10))
-        self.blue_tree = self.make_table(blue_panel, [('name','플레이어'), ('leader','방장')])
-        self.red_tree = self.make_table(red_panel, [('name','플레이어'), ('leader','방장')])
+        trees = []
+        for column, (title, color) in enumerate([(self.blue_title, BLUE), (self.red_title, RED)]):
+            panel = tk.Frame(teams_panel, bg=CARD)
+            panel.grid(row=0, column=column, sticky='nsew', padx=(0, px(8)) if column == 0 else (px(8), 0))
+            head = tk.Frame(panel, bg=CARD)
+            head.pack(fill='x', pady=(0, px(6)))
+            tk.Frame(head, bg=color, width=px(4), height=px(18)).pack(side='left', padx=(0, px(8)))
+            tk.Label(head, textvariable=title, bg=CARD, fg=color, font=font(12, 'bold')).pack(side='left')
+            trees.append(self.make_table(panel, [('name', '플레이어'), ('leader', '방장')], scroll_x=False))
+        self.blue_tree, self.red_tree = trees
         for team_tree in (self.blue_tree, self.red_tree):
-            team_tree.column('name', width=260, minwidth=100)
-            team_tree.column('leader', width=60, minwidth=50, stretch=False)
+            team_tree.column('name', width=px(260), minwidth=px(100))
+            team_tree.column('leader', width=px(60), minwidth=px(50), stretch=False, anchor='center')
+            team_tree.heading('leader', anchor='center')
         self.other_members = tk.StringVar(value='')
-        ttk.Label(self.lobby_tab, textvariable=self.other_members, wraplength=840).pack(anchor='w', pady=(10, 0))
-        bar = ttk.Frame(self.history_tab)
-        bar.pack(fill='x', pady=(0,8))
+        tk.Label(self.lobby_tab, textvariable=self.other_members, bg=CARD, fg=SUB, font=font(9),
+                 wraplength=px(840), justify='left').pack(anchor='w', pady=(px(8), 0))
+
+        # 실행 로그 탭
+        log_head = tk.Frame(log_tab, bg=CARD)
+        log_head.pack(fill='x', pady=(0, px(10)))
+        tk.Label(log_head, text='수집기가 남긴 기록입니다.', bg=CARD, fg=SUB, font=font(10)).pack(side='left')
+        RoundButton(log_head, '지우기', self.clear, height=30, size=9).pack(side='right')
+        RoundButton(log_head, '로그 저장', self.save_log, height=30, size=9).pack(side='right', padx=(0, px(6)))
+        log_box = tk.Frame(log_tab, bg=STRIPE, highlightthickness=1, highlightbackground=LINE)
+        log_box.pack(fill='both', expand=True)
+        self.log = tk.Text(log_box, wrap='word', font=font(10), bg=STRIPE, fg=FG, relief='flat', bd=0,
+                           padx=px(14), pady=px(12), state='disabled', highlightthickness=0, spacing1=px(2), spacing3=px(2))
+        log_scroll = ttk.Scrollbar(log_box, orient='vertical', command=self.log.yview)
+        self.log.configure(yscrollcommand=log_scroll.set)
+        log_scroll.pack(side='right', fill='y')
+        self.log.pack(side='left', fill='both', expand=True)
+        for tag, color in [('ok', GREEN), ('warn', AMBER), ('error', RED), ('info', SUB)]:
+            self.log.tag_configure(tag, foreground=color)
+
+        # 매치 히스토리 탭
+        bar = tk.Frame(self.history_tab, bg=CARD)
+        bar.pack(fill='x', pady=(0, px(8)))
         self.history_source = tk.StringVar(value='웹앱 내전 기록')
-        picker = ttk.Combobox(bar, textvariable=self.history_source, values=['웹앱 내전 기록','내 계정 최근 경기'], state='readonly', width=24)
+        picker = ttk.Combobox(bar, textvariable=self.history_source, values=['웹앱 내전 기록', '내 계정 최근 경기'],
+                              state='readonly', width=20, font=font(10))
         picker.pack(side='left')
         picker.bind('<<ComboboxSelected>>', lambda e: self.refresh_view('history'))
-        ttk.Button(bar, text='새로고침', command=lambda: self.refresh_view('history')).pack(side='right')
+        RoundButton(bar, '새로고침', lambda: self.refresh_view('history'), height=30, size=9).pack(side='right')
         self.history_status = tk.StringVar(value='새로고침을 눌러 기록을 불러오세요. 행을 더블클릭하면 상세 정보를 봅니다.')
-        ttk.Label(self.history_tab, textvariable=self.history_status).pack(anchor='w', pady=(0,8))
-        self.history_tree = self.make_table(self.history_tab, [('date','일시'), ('mode','종류'), ('result','결과'), ('duration','시간'), ('id','경기 ID')])
+        tk.Label(self.history_tab, textvariable=self.history_status, bg=CARD, fg=SUB, font=font(10)).pack(anchor='w', pady=(0, px(8)))
+        self.history_tree = self.make_table(self.history_tab, [('date', '일시'), ('mode', '종류'), ('result', '결과'), ('duration', '시간'), ('id', '경기 ID')])
         self.history_tree.bind('<Double-1>', self.show_match)
         self.history_tree.bind('<Return>', self.show_match)
-        self.log = ScrolledText(log_tab, wrap='word', font=('맑은 고딕', 10), bg='#152033', fg='#e2e8f0', relief='flat', padx=14, pady=14, state='disabled')
-        self.log.pack(fill='both', expand=True)
-        ttk.Label(frame, text='전송에 실패한 경기는 로컬에 보관되며, 수집 중 또는 다음 시작 시 재시도합니다.').pack(anchor='w', pady=(12, 0))
+
+        self.show_tab(self.lobby_tab, refresh=False)
         self.append('수집 시작을 누르면 자동 업로드가 활성화됩니다.\n')
         root.report_callback_exception = self.ui_error
         root.protocol('WM_DELETE_WINDOW', self.close)
         root.after(100, self.poll)
         root.after(200, self.refresh_lobby_loop)
         root.after(100, self.refresh_phase_loop)
-        self.tabs.bind('<<NotebookTabChanged>>', lambda e: self.refresh_view('history') if self.tabs.select() == str(self.history_tab) else None)
+        root.after(300, self.refresh_account_loop)
+
+    def show_tab(self, page, refresh=True):
+        page.tkraise()
+        for other, (label, bar) in self.tab_buttons.items():
+            active = other is page
+            label.configure(fg=FG if active else SUB)
+            bar.configure(bg=ACCENT if active else CARD)
+        if refresh and page is self.history_tab:
+            self.refresh_view('history')
+
+    def draw_avatar(self, image, initial):
+        c = self.avatar
+        c.delete('all')
+        size = px(76)
+        center, radius = size / 2, px(34)
+        if image is not None:
+            c.create_image(center, center, image=image)
+            inner, outer = radius, size
+            mid, width = (inner + outer) / 2, outer - inner
+            c.create_oval(center - mid, center - mid, center + mid, center + mid, outline=CARD, width=width)
+        else:
+            c.create_oval(center - radius, center - radius, center + radius, center + radius, fill=ACCENT_TINT, outline='')
+            c.create_text(center, center, text=initial, fill='#9A6B12', font=font(20, 'bold'))
+        c.create_oval(center - radius - px(2), center - radius - px(2), center + radius + px(2), center + radius + px(2),
+                      outline=ACCENT, width=px(2))
+
+    def refresh_account_loop(self):
+        if self.closing:
+            return
+        self.refresh_view('account')
+        self.root.after(10000, self.refresh_account_loop)
+
+    def fetch_account(self):
+        port, password = collector.get_lcu_credentials()
+        if not port:
+            raise ValueError('롤 클라이언트가 실행되어 있지 않습니다')
+        me = collector.query_lcu(port, password, '/lol-summoner/v1/current-summoner')
+        if not isinstance(me, dict) or not (me.get('gameName') or me.get('displayName')):
+            raise ValueError('로그인한 계정을 확인할 수 없습니다')
+        ranked = collector.query_lcu(port, password, '/lol-ranked/v1/current-ranked-stats') or {}
+        solo = ((ranked.get('queueMap') or {}).get('RANKED_SOLO_5x5') or {}) if isinstance(ranked, dict) else {}
+        tier = str(solo.get('tier') or '').upper()
+        if tier in TIER_NAMES:
+            division = solo.get('division')
+            rank = f"솔로랭크 {TIER_NAMES[tier]}" + (f" {division}" if division and division != 'NA' else '') + f" · {solo.get('leaguePoints', 0)}LP"
+        else:
+            rank = '솔로랭크 기록 없음'
+        icon_id = me.get('profileIconId')
+        icon = self.icon_cache.get(icon_id)
+        if icon is None and isinstance(icon_id, int):
+            try:
+                if 'version' not in self.icon_cache:
+                    with urllib.request.urlopen('https://ddragon.leagueoflegends.com/api/versions.json', timeout=5) as response:
+                        self.icon_cache['version'] = json.load(response)[0]
+                url = f"https://ddragon.leagueoflegends.com/cdn/{self.icon_cache['version']}/img/profileicon/{icon_id}.png"
+                with urllib.request.urlopen(url, timeout=5) as response:
+                    icon = base64.b64encode(response.read()).decode()
+                self.icon_cache[icon_id] = icon
+            except Exception:
+                icon = None
+        return {'name': me.get('gameName') or me.get('displayName'), 'tag': me.get('tagLine') or '',
+                'level': me.get('summonerLevel'), 'rank': rank, 'icon': icon}
+
+    def render_account(self, data, error):
+        if error:
+            self.account_name.set('연결 대기 중')
+            self.account_level.set('')
+            self.account_rank.set('')
+            self.account_conn.set(error)
+            self.conn_dot.set(DISABLED)
+            self.avatar_image = None
+            self.draw_avatar(None, '?')
+            return
+        self.account_name.set(data['name'] + (f" #{data['tag']}" if data['tag'] else ''))
+        self.account_level.set(f"레벨 {data['level']}" if data.get('level') else '')
+        self.account_rank.set(data['rank'])
+        self.account_conn.set('롤 클라이언트 연결됨')
+        self.conn_dot.set(GREEN)
+        image = None
+        if data.get('icon'):
+            try:
+                image = tk.PhotoImage(data=data['icon'])
+                factor = max(1, round(image.width() / px(68)))
+                if factor > 1:
+                    image = image.subsample(factor)
+            except tk.TclError:
+                image = None
+        self.avatar_image = image
+        self.draw_avatar(image, (data['name'] or '?')[:1])
 
     def ui_error(self, error_type, error, traceback):
         import traceback as trace
@@ -704,21 +1044,28 @@ class CollectorUI:
         self.status.set('화면 처리 오류 · 실행 로그를 확인하세요')
 
     @staticmethod
-    def make_table(parent, columns):
-        wrapper = ttk.Frame(parent)
+    def make_table(parent, columns, scroll_x=True):
+        wrapper = tk.Frame(parent, bg=CARD, highlightthickness=1, highlightbackground=LINE)
         wrapper.pack(fill='both', expand=True)
         tree = ttk.Treeview(wrapper, columns=[c[0] for c in columns], show='headings', selectmode='browse')
         for key, title in columns:
-            tree.heading(key, text=title)
-            tree.column(key, width=150, minwidth=60)
+            tree.heading(key, text=title, anchor='w')
+            tree.column(key, width=px(150), minwidth=px(60))
+        tree.tag_configure('odd', background=STRIPE)
         scrollbar = ttk.Scrollbar(wrapper, orient='vertical', command=tree.yview)
         tree.configure(yscrollcommand=scrollbar.set)
-        horizontal = ttk.Scrollbar(wrapper, orient='horizontal', command=tree.xview)
-        tree.configure(xscrollcommand=horizontal.set)
-        horizontal.pack(side='bottom', fill='x')
+        if scroll_x:
+            horizontal = ttk.Scrollbar(wrapper, orient='horizontal', command=tree.xview)
+            tree.configure(xscrollcommand=horizontal.set)
+            horizontal.pack(side='bottom', fill='x')
         scrollbar.pack(side='right', fill='y')
         tree.pack(side='left', fill='both', expand=True)
         return tree
+
+    @staticmethod
+    def stripe(tree):
+        for index, item in enumerate(tree.get_children()):
+            tree.item(item, tags=('odd',) if index % 2 else ())
 
     def refresh_phase_loop(self):
         if self.closing:
@@ -761,6 +1108,9 @@ class CollectorUI:
             self.history_status.set('기록을 불러오는 중...')
         def fetch():
             try:
+                if kind == 'account':
+                    self.view_events.put((kind, source, self.fetch_account(), None))
+                    return
                 if kind == 'history' and source == '웹앱 내전 기록':
                     with urllib.request.urlopen(collector.SERVER_URL, context=ssl.create_default_context(), timeout=8) as response:
                         data = json.load(response)
@@ -822,6 +1172,10 @@ class CollectorUI:
 
     def render_view(self, kind, source, data, error):
         self.view_busy.discard(kind)
+        if kind == 'account':
+            if not self.closing:
+                self.render_account(data, error)
+            return
         if kind == 'phase':
             previous = self.game_phase
             self.game_phase = None if error else data
@@ -886,6 +1240,8 @@ class CollectorUI:
                     team_tree.insert('', 'end', values=(name, leader))
                 else:
                     others.append(f'{name} ({team}' + (', 방장)' if leader else ')'))
+            self.stripe(self.blue_tree)
+            self.stripe(self.red_tree)
             self.blue_title.set(f'블루팀 · {len(self.blue_tree.get_children())}명')
             self.red_title.set(f'레드팀 · {len(self.red_tree.get_children())}명')
             self.other_members.set('관전자 / 대기: ' + ', '.join(others) if others else '')
@@ -908,6 +1264,7 @@ class CollectorUI:
                     values = (date, record.get('gameMode',''), result, duration, record.get('gameId',''))
                 item = tree.insert('', 'end', values=values)
                 self.history_records[item] = (source, record)
+            self.stripe(tree)
             status.set(f'{len(self.history_records)}경기 · 더블클릭하면 상세 정보를 봅니다.')
 
     def show_match(self, event=None):
@@ -916,17 +1273,25 @@ class CollectorUI:
         source, record = self.history_records[selected[0]]
         window = tk.Toplevel(self.root)
         window.title('경기 상세')
-        window.geometry('760x460')
-        box = ScrolledText(window, wrap='word', font=('맑은 고딕',10), padx=16, pady=16)
-        box.pack(fill='both', expand=True)
+        window.geometry(f'{px(780)}x{px(480)}')
+        window.configure(bg=BG)
+        holder = tk.Frame(window, bg=CARD, highlightthickness=1, highlightbackground=LINE)
+        holder.pack(fill='both', expand=True, padx=px(16), pady=px(16))
+        box = tk.Text(holder, wrap='word', font=font(10), bg=CARD, fg=FG, relief='flat', bd=0, highlightthickness=0,
+                      padx=px(18), pady=px(16), spacing1=px(2), spacing3=px(2))
+        scroll = ttk.Scrollbar(holder, orient='vertical', command=box.yview)
+        box.configure(yscrollcommand=scroll.set)
+        scroll.pack(side='right', fill='y')
+        box.pack(side='left', fill='both', expand=True)
+        box.tag_configure('meta', foreground=SUB)
+        box.tag_configure('blue', foreground=BLUE, font=font(12, 'bold'), spacing1=px(10))
+        box.tag_configure('red', foreground=RED, font=font(12, 'bold'), spacing1=px(10))
         if source == '웹앱 내전 기록':
-            lines = [f"경기: {record.get('matchId','')}  |  승리: {record.get('winner','')}  |  시간: {record.get('duration','')}", '']
+            box.insert('end', f"경기 {record.get('matchId','')}  ·  승리 {record.get('winner','')}  ·  {record.get('duration','')}\n", 'meta')
             for key, label in [('blue','블루팀'),('red','레드팀')]:
-                lines.append(label)
+                box.insert('end', label + '\n', key)
                 for player in record.get(key,[]) or []:
-                    lines.append(f"  {player.get('name','')}  /  {player.get('champion','')}  /  {('미확인' if player.get('role') in ('UNKNOWN', None, '') else player.get('role'))}  /  KDA {player.get('kda','')}  /  딜량 {player.get('damage','')}  /  CS {player.get('cs','')}")
-                lines.append('')
-            box.insert('end', '\n'.join(lines))
+                    box.insert('end', f"  {player.get('name','')}  /  {player.get('champion','')}  /  {('미확인' if player.get('role') in ('UNKNOWN', None, '') else player.get('role'))}  /  KDA {player.get('kda','')}  /  딜량 {player.get('damage','')}  /  CS {player.get('cs','')}\n")
         else:
             identities = {i.get('participantId'): i.get('player',{}) for i in record.get('participantIdentities',[]) or []}
             lines = [f"경기: {record.get('gameId','')}  |  {record.get('gameMode','')}", '']
@@ -940,7 +1305,13 @@ class CollectorUI:
 
     def append(self, text):
         self.log.configure(state='normal')
-        self.log.insert('end', text)
+        for line in text.splitlines(keepends=True):
+            head = line.lstrip()
+            tag = ('error' if head.startswith(('[오류]', '[화면 오류]')) or '실패' in line else
+                   'warn' if head.startswith('[!]') else
+                   'ok' if head.startswith(('[+]', '[ 성공]')) else
+                   'info' if head.startswith(('[*]', '[-]')) else '')
+            self.log.insert('end', line, tag)
         if int(self.log.index('end-1c').split('.')[0]) > 1500:
             self.log.delete('1.0', '300.0')
         self.log.see('end')
