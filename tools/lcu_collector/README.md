@@ -8,7 +8,7 @@ Vercel이 `api/` 폴더의 파일을 서버리스 함수로 배포하므로 수�
 1. 저장소의 [Releases](https://github.com/wlwns42/lol-scrim-balancer/releases)에서 최신 `collector-v*` 릴리스를 열고 `ScrimCollector.exe`를 내려받습니다.
 2. 내려받은 `ScrimCollector.exe`를 더블클릭해 실행합니다.
 3. Windows SmartScreen이 "Windows의 PC 보호" 창을 띄우면 **추가 정보 → 실행**을 누릅니다. 코드 서명을 하지 않은 실행 파일이라 처음 한 번 나타날 수 있습니다.
-4. 창에서 **시작**을 누른 뒤 롤 클라이언트로 내전을 진행합니다. 경기가 끝나면 결과가 자동으로 제출됩니다.
+4. 창을 열면 수집이 자동으로 시작됩니다. 그대로 롤 클라이언트로 내전을 진행하면 경기가 끝날 때 결과가 자동으로 제출됩니다. 멈추려면 **수집 중지**를 누릅니다.
 
 exe로 실행하면 대기 중인 경기, 경기 아카이브, 서버 백업은 `%LOCALAPPDATA%\ScrimCollector`에 저장됩니다.
 새 버전 exe를 다른 폴더에 받아도 같은 위치를 쓰므로 제출되지 않은 경기가 유지됩니다.

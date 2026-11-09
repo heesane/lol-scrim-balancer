@@ -1352,7 +1352,7 @@ class CollectorUI:
 
         self.build_counter_tab(self.counter_tab)
         self.show_tab(self.lobby_tab, refresh=False)
-        self.append('수집 시작을 누르면 자동 업로드가 활성화됩니다.\n')
+        self.append('창을 열면 수집을 자동으로 시작합니다. 멈추려면 수집 중지를 누르세요.\n')
         root.report_callback_exception = self.ui_error
         root.protocol('WM_DELETE_WINDOW', self.close)
         root.after(100, self.poll)
@@ -1360,6 +1360,8 @@ class CollectorUI:
         root.after(100, self.refresh_phase_loop)
         root.after(300, self.refresh_account_loop)
         root.after(500, self.load_counters)
+        # 창이 뜨면 버튼을 누르지 않아도 바로 수집을 시작한다.
+        root.after(400, self.start)
 
     # ---------- 카운터 정보 탭 ----------
     def build_counter_tab(self, tab):
