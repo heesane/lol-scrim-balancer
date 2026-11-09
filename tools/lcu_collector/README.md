@@ -13,6 +13,19 @@ Vercel이 `api/` 폴더의 파일을 서버리스 함수로 배포하므로 수�
 exe로 실행하면 대기 중인 경기, 경기 아카이브, 서버 백업은 `%LOCALAPPDATA%\ScrimCollector`에 저장됩니다.
 새 버전 exe를 다른 폴더에 받아도 같은 위치를 쓰므로 제출되지 않은 경기가 유지됩니다.
 
+### Windows 시작 시 자동 실행
+
+수집기가 꺼져 있으면 그 판의 결과는 기록되지 않습니다. '결과 수집' 카드 아래의 **Windows 시작 시 자동 실행**을 켜면 Windows에 로그인할 때 수집기가 함께 실행됩니다.
+현재 사용자의 시작 프로그램(`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`의 `ScrimCollector` 값)에 등록하므로 관리자 권한이 필요 없고, 끄면 등록을 지웁니다.
+켜 둔 상태에서 새 버전 exe를 다른 폴더에서 실행하면 등록된 경로가 그 exe로 바뀝니다.
+
+수집기 창은 하나만 뜹니다. 이미 실행 중일 때 exe를 다시 실행하면 새 창을 띄우지 않고 기존 창을 앞으로 가져옵니다.
+
+### 롤 클라이언트 연결
+
+`C:\`·`D:\`의 기본 설치 경로(`Riot Games\League of Legends`, `Program Files\Riot Games\League of Legends`)에서 클라이언트의 lockfile을 찾고,
+없으면 실행 중인 롤 클라이언트(`LeagueClientUx.exe`)의 위치에서 찾습니다. 다른 드라이브나 폴더에 설치해도 클라이언트를 켜 두면 연결됩니다.
+
 ## 파이썬으로 실행하기
 
 Windows에 Python 3(tkinter 포함)이 설치되어 있으면 아래처럼 실행할 수 있습니다. 표준 라이브러리만 사용합니다.

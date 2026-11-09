@@ -46,13 +46,89 @@ def test_lcu_connection(port, password):
     except Exception:
         return False
 
+LOCKFILE_PATHS = [
+    r"C:\Riot Games\League of Legends\lockfile",
+    r"D:\Riot Games\League of Legends\lockfile",
+    r"C:\Program Files\Riot Games\League of Legends\lockfile",
+    r"D:\Program Files\Riot Games\League of Legends\lockfile"
+]
+LEAGUE_PROCESSES = ('leagueclientux.exe', 'leagueclient.exe')
+_found_lockfile = None
+
+
+def running_league_lockfiles():
+    """실행 중인 롤 클라이언트 프로세스의 exe 위치로 lockfile 경로를 찾는다.
+
+    기본 설치 경로가 아닌 곳(다른 드라이브, 다른 폴더)에 설치해도 연결할 수 있게 한다.
+    """
+    if sys.platform != 'win32':
+        return []
+    import ctypes
+    from ctypes import wintypes
+
+    class PROCESSENTRY32W(ctypes.Structure):
+        _fields_ = [('dwSize', wintypes.DWORD), ('cntUsage', wintypes.DWORD), ('th32ProcessID', wintypes.DWORD),
+                    ('th32DefaultHeapID', ctypes.c_size_t), ('th32ModuleID', wintypes.DWORD),
+                    ('cntThreads', wintypes.DWORD), ('th32ParentProcessID', wintypes.DWORD),
+                    ('pcPriClassBase', ctypes.c_long), ('dwFlags', wintypes.DWORD), ('szExeFile', ctypes.c_wchar * 260)]
+
+    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    kernel32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+    kernel32.Process32FirstW.argtypes = kernel32.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    TH32CS_SNAPPROCESS, PROCESS_QUERY_LIMITED_INFORMATION = 0x2, 0x1000
+    snapshot = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    if not snapshot or snapshot == wintypes.HANDLE(-1).value:
+        return []
+    pids = []
+    try:
+        entry = PROCESSENTRY32W()
+        entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+        ok = kernel32.Process32FirstW(snapshot, ctypes.byref(entry))
+        while ok:
+            if entry.szExeFile.lower() in LEAGUE_PROCESSES:
+                pids.append(entry.th32ProcessID)
+            ok = kernel32.Process32NextW(snapshot, ctypes.byref(entry))
+    finally:
+        kernel32.CloseHandle(snapshot)
+    paths = []
+    for pid in pids:
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            continue
+        try:
+            size = wintypes.DWORD(1024)
+            buffer = ctypes.create_unicode_buffer(size.value)
+            if kernel32.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(size)):
+                path = os.path.join(os.path.dirname(buffer.value), 'lockfile')
+                if path not in paths:
+                    paths.append(path)
+        finally:
+            kernel32.CloseHandle(handle)
+    return paths
+
+
 def get_lcu_credentials():
-    possible_paths = [
-        r"C:\Riot Games\League of Legends\lockfile",
-        r"D:\Riot Games\League of Legends\lockfile",
-        r"C:\Program Files\Riot Games\League of Legends\lockfile",
-        r"D:\Program Files\Riot Games\League of Legends\lockfile"
-    ]
+    global _found_lockfile
+    port, password, _ = read_lockfile_credentials(LOCKFILE_PATHS + ([_found_lockfile] if _found_lockfile else []))
+    if port:
+        return port, password
+    # 기본 경로에 없으면 실행 중인 클라이언트에서 설치 폴더를 찾고, 찾은 경로는 다음 조회에 다시 쓴다.
+    try:
+        found = [p for p in running_league_lockfiles() if p not in LOCKFILE_PATHS and p != _found_lockfile]
+    except (AttributeError, OSError):
+        found = []
+    port, password, path = read_lockfile_credentials(found)
+    if port:
+        _found_lockfile = path
+    return port, password
+
+
+def read_lockfile_credentials(possible_paths):
     for p in possible_paths:
         if os.path.exists(p):
             try:
@@ -62,10 +138,10 @@ def get_lcu_credentials():
                         port = parts[2]
                         password = parts[3]
                         if test_lcu_connection(port, password):
-                            return port, password
+                            return port, password, p
             except Exception:
                 pass
-    return None, None
+    return None, None, None
 
 def query_lcu(port, password, endpoint):
     ctx = ssl.create_default_context()
@@ -548,6 +624,71 @@ from tkinter import ttk, messagebox
 
 BASE = Path(DATA_DIR)
 collector = sys.modules[__name__]
+
+
+AUTOSTART_KEY = r'Software\Microsoft\Windows\CurrentVersion\Run'
+AUTOSTART_NAME = 'ScrimCollector'
+WINDOW_TITLE = '내전 결과 수집기'
+
+
+def autostart_command():
+    """Windows 로그인 때 실행할 명령. exe는 exe 자신을, 스크립트는 콘솔 창 없는 pythonw로 이 파일을 실행한다."""
+    if FROZEN:
+        return f'"{sys.executable}"'
+    executable = Path(sys.executable)
+    pythonw = executable.with_name('pythonw.exe')
+    return f'"{pythonw if pythonw.exists() else executable}" "{Path(__file__).resolve()}"'
+
+
+def autostart_enabled():
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, AUTOSTART_KEY) as key:
+            value, _ = winreg.QueryValueEx(key, AUTOSTART_NAME)
+        return bool(value)
+    except (ImportError, OSError):
+        return False
+
+
+def set_autostart(enabled):
+    """현재 사용자의 시작 프로그램(HKCU Run)에 수집기를 넣거나 뺀다. 관리자 권한은 필요 없다."""
+    import winreg
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, AUTOSTART_KEY) as key:
+        if enabled:
+            winreg.SetValueEx(key, AUTOSTART_NAME, 0, winreg.REG_SZ, autostart_command())
+        else:
+            try:
+                winreg.DeleteValue(key, AUTOSTART_NAME)
+            except FileNotFoundError:
+                pass
+
+
+def activate_existing_window():
+    """수집기 창이 이미 떠 있으면 그 창을 앞으로 가져오고 True를 돌려준다.
+
+    자동 실행으로 켜진 수집기가 있는데 exe를 또 실행하면 두 번째 창의 수집이
+    '이미 다른 수집기가 실행 중'으로 실패하므로, 창을 하나만 띄운다.
+    """
+    if sys.platform != 'win32':
+        return False
+    import ctypes
+    from ctypes import wintypes
+    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel32.CreateMutexW.restype = wintypes.HANDLE
+    kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
+    ERROR_ALREADY_EXISTS, SW_RESTORE = 183, 9
+    handle = kernel32.CreateMutexW(None, False, 'Local\\LolScrimBalancer.ScrimCollector')
+    if not handle or ctypes.get_last_error() != ERROR_ALREADY_EXISTS:
+        globals()['_instance_mutex'] = handle  # 프로세스가 끝날 때까지 쥐고 있는다.
+        return False
+    user32 = ctypes.windll.user32
+    user32.FindWindowW.restype = wintypes.HWND
+    user32.FindWindowW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
+    hwnd = user32.FindWindowW(None, WINDOW_TITLE)
+    if hwnd:
+        user32.ShowWindow(hwnd, SW_RESTORE)
+        user32.SetForegroundWindow(hwnd)
+    return True
 
 
 def run_worker():
@@ -1157,7 +1298,7 @@ class CollectorUI:
         self.icons_failed = set()
         self.counter_view = None
         SCALE = max(1.0, root.winfo_fpixels('1i') / 96)
-        root.title('내전 결과 수집기')
+        root.title(WINDOW_TITLE)
         self.set_window_icon(root)
         root.geometry(f'{px(1100)}x{px(880)}')
         root.minsize(px(940), px(700))
@@ -1248,8 +1389,18 @@ class CollectorUI:
         self.start_button.grid(row=0, column=0, sticky='ew', padx=(0, px(8)))
         self.stop_button = RoundButton(buttons, '중지', self.stop, kind='danger', height=40, size=11, state='disabled')
         self.stop_button.grid(row=0, column=1, sticky='ew')
-        tk.Label(control.body, text='전송에 실패한 경기는 로컬에 보관했다가 다시 보냅니다.', bg=CARD, fg=SUB,
-                 font=font(9)).pack(pady=(px(10), 0))
+        note = tk.Frame(control.body, bg=CARD)
+        note.pack(fill='x', pady=(px(10), 0))
+        tk.Label(note, text='전송에 실패한 경기는 로컬에 보관했다가 다시 보냅니다.', bg=CARD, fg=SUB,
+                 font=font(9)).pack(side='left')
+        if sys.platform == 'win32':
+            # 수집기가 꺼져 있으면 그 판은 기록되지 않으므로 Windows에 로그인할 때 함께 켤 수 있게 한다.
+            self.autostart = tk.BooleanVar(value=autostart_enabled())
+            if self.autostart.get():
+                set_autostart(True)  # exe를 다른 폴더로 옮겼어도 지금 실행한 exe를 가리키게 맞춘다.
+            tk.Checkbutton(note, text='Windows 시작 시 자동 실행', variable=self.autostart, command=self.toggle_autostart,
+                           bg=CARD, activebackground=CARD, fg=SUB, activeforeground=FG, selectcolor=CARD,
+                           font=font(9), highlightthickness=0, bd=0, cursor='hand2').pack(side='right')
 
         # 카드 3: 참가자 · 로그 · 매치 히스토리
         main = RoundedCard(grid, border=LINE, pad=16)
@@ -1367,6 +1518,16 @@ class CollectorUI:
         # 창이 뜨면 버튼을 누르지 않아도 바로 수집을 시작한다.
         root.after(400, self.start)
         root.after(150, self.setup_resize_smoothing)
+
+    def toggle_autostart(self):
+        want = self.autostart.get()
+        try:
+            set_autostart(want)
+        except OSError as exc:
+            self.autostart.set(not want)
+            messagebox.showerror('자동 실행 설정 오류', str(exc))
+            return
+        self.append('Windows 시작 시 자동 실행을 켰습니다.\n' if want else 'Windows 시작 시 자동 실행을 껐습니다.\n')
 
     # ---------- 창 크기 조절 ----------
     def setup_resize_smoothing(self):
@@ -2701,6 +2862,11 @@ if __name__ == '__main__':
             print(f'[오류] {exc}', flush=True)
             sys.exit(1)
     else:
+        try:
+            if activate_existing_window():
+                sys.exit(0)
+        except (AttributeError, OSError):
+            pass
         try:
             import ctypes
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
