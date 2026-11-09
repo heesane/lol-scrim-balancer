@@ -848,6 +848,8 @@ ACCENT_TINT = '#FBF4E4'
 BLUE = '#2563EB'
 RED = '#DC2626'
 GREEN = '#16A34A'
+DRAFT_SIDE_NAME = {'blue': '블루팀', 'red': '레드팀'}
+DRAFT_SIDE_COLOR = {'blue': BLUE, 'red': RED}
 AMBER = '#D97706'
 DISABLED = '#C9CED8'
 STRIPE = '#F8F9FB'
@@ -1291,6 +1293,7 @@ class CollectorUI:
         self.draft_panel = tk.Frame(self.lobby_tab, bg=CARD)
         self.draft = None
         self.draft_key = None
+        self.draft_board = None
         self.draft_deadline = None
         self.lobby_mode = 'teams'
         teams_panel.columnconfigure(0, weight=1, uniform='team')
@@ -2106,27 +2109,45 @@ class CollectorUI:
         self.update_lobby_empty()
 
     def build_draft_board(self, draft):
+        """밴픽 보드를 그린다. 틀이 그대로면 기존 위젯의 글자·색·아이콘만 바꾼다.
+
+        Windows에서는 새로 만든 위젯이 처음 그려질 때까지 배경색만 보인다. 밴·픽이 바뀔 때마다
+        보드를 지우고 다시 만들면 그 사이 보드가 하얗게 비어 보여 깜빡이므로, 위젯은 진영·인원·밴 칸 수나
+        추천 밴 줄 표시 여부가 바뀔 때만 새로 만든다.
+        """
+        layout = self.draft_layout(draft)
+        board = self.draft_board
+        if board is None or board['layout'] != layout or not board['head'].winfo_exists():
+            for child in self.draft_panel.winfo_children():
+                child.destroy()
+            board = self.draft_board = self.create_draft_board(layout)
+        self.update_draft_board(board, draft)
+        self.request_icons()
+
+    def draft_layout(self, draft):
+        players = tuple(sum(1 for p in draft['players'] if p['side'] == side) for side in ('blue', 'red'))
+        bans = tuple(max(5, len(draft['bans'][side] or [])) for side in ('blue', 'red'))
+        suggest = bool(draft.get('my_side')) and self.scrim_stats is not None
+        return draft.get('my_side'), players, bans, suggest
+
+    def create_draft_board(self, layout):
+        my_side, players, bans, suggest = layout
         panel = self.draft_panel
-        for child in panel.winfo_children():
-            child.destroy()
+        board = {'layout': layout, 'suggest': None, 'bans': {}, 'rows': {}}
         head = tk.Frame(panel, bg=CARD)
         head.pack(fill='x', pady=(0, px(12)))
-        turn = draft.get('turn')
-        side_name = {'blue': '블루팀', 'red': '레드팀'}
-        side_color = {'blue': BLUE, 'red': RED}
-        if turn:
-            action = '밴' if turn['type'] == 'ban' else '픽'
-            text, color = f"{side_name[turn['side']]} {turn['name']} {action} 차례", side_color[turn['side']]
-        elif draft.get('phase') == 'FINALIZATION':
-            text, color = '밴픽 완료 · 게임 시작을 기다리는 중', GREEN
-        else:
-            text, color = '밴픽 진행 중', FG
-        tk.Label(head, text=text, bg=CARD, fg=color, font=font(13, 'bold')).pack(side='left')
+        board['head'] = tk.Label(head, text='', bg=CARD, fg=FG, font=font(13, 'bold'))
+        board['head'].pack(side='left')
         self.draft_timer = tk.Label(head, text='', bg=MUTED, fg=FG, font=font(12, 'bold'), padx=px(12), pady=px(3))
         self.draft_timer.pack(side='right')
-        self.tick_draft_timer(reschedule=False)
         tk.Label(head, text='픽을 누르면 카운터 정보를 봅니다', bg=CARD, fg=SUB, font=font(9)).pack(side='right', padx=(0, px(12)))
-        self.ban_suggestions(panel, draft)
+        if suggest:
+            row = tk.Frame(panel, bg=MUTED, highlightthickness=1, highlightbackground=LINE)
+            row.pack(fill='x', pady=(0, px(12)))
+            tk.Label(row, text='추천 밴', bg=MUTED, fg=RED, font=font(10, 'bold')).pack(side='left', padx=(px(10), px(8)), pady=px(6))
+            board['suggest'] = [tk.Label(row, text='', bg=MUTED, fg=FG, font=font(10), compound='left') for _ in range(3)]
+            for label in board['suggest']:
+                label.pack(side='left', padx=(0, px(12)))
         columns = tk.Frame(panel, bg=CARD)
         columns.pack(fill='both', expand=True)
         columns.columnconfigure(0, weight=1, uniform='side')
@@ -2137,23 +2158,50 @@ class CollectorUI:
             title = tk.Frame(col, bg=CARD)
             title.pack(fill='x', pady=(0, px(8)))
             dot = StatusDot(title, 10)
-            dot.set(side_color[side])
+            dot.set(DRAFT_SIDE_COLOR[side])
             dot.pack(side='left', padx=(0, px(8)))
-            mine = '  (우리 팀)' if draft.get('my_side') == side else ''
-            tk.Label(title, text=side_name[side] + mine, bg=CARD, fg=side_color[side], font=font(12, 'bold')).pack(side='left')
+            mine = '  (우리 팀)' if my_side == side else ''
+            tk.Label(title, text=DRAFT_SIDE_NAME[side] + mine, bg=CARD, fg=DRAFT_SIDE_COLOR[side], font=font(12, 'bold')).pack(side='left')
             bans_row = tk.Frame(col, bg=CARD)
             bans_row.pack(fill='x', pady=(0, px(10)))
             tk.Label(bans_row, text='밴', bg=CARD, fg=SUB, font=font(10, 'bold'), width=3, anchor='w').pack(side='left')
-            slots = draft['bans'][side] or []
-            for slot in slots + [None] * max(0, 5 - len(slots)):
-                self.ban_slot(bans_row, slot).pack(side='left', padx=(0, px(6)))
-            for player in [p for p in draft['players'] if p['side'] == side]:
-                self.pick_row(col, player, draft, side_color[side]).pack(fill='x', pady=(0, px(6)))
-        self.request_icons()
+            size = px(40)
+            board['bans'][side] = []
+            for _ in range(bans[index]):
+                canvas = tk.Canvas(bans_row, width=size, height=size, bg=CARD, highlightthickness=0, bd=0)
+                canvas.pack(side='left', padx=(0, px(6)))
+                board['bans'][side].append(canvas)
+            board['rows'][side] = []
+            for _ in range(players[index]):
+                row = self.create_pick_row(col)
+                row.pack(fill='x', pady=(0, px(6)))
+                board['rows'][side].append(row)
+        return board
 
-    def ban_slot(self, parent, slot):
+    def update_draft_board(self, board, draft):
+        turn = draft.get('turn')
+        if turn:
+            action = '밴' if turn['type'] == 'ban' else '픽'
+            text, color = f"{DRAFT_SIDE_NAME[turn['side']]} {turn['name']} {action} 차례", DRAFT_SIDE_COLOR[turn['side']]
+        elif draft.get('phase') == 'FINALIZATION':
+            text, color = '밴픽 완료 · 게임 시작을 기다리는 중', GREEN
+        else:
+            text, color = '밴픽 진행 중', FG
+        board['head'].configure(text=text, fg=color)
+        self.tick_draft_timer(reschedule=False)
+        if board['suggest']:
+            self.update_ban_suggestions(board['suggest'], draft)
+        for side in ('blue', 'red'):
+            slots = draft['bans'][side] or []
+            for canvas, slot in zip(board['bans'][side], slots + [None] * len(board['bans'][side])):
+                self.draw_ban_slot(canvas, slot)
+            players = [p for p in draft['players'] if p['side'] == side]
+            for row, player in zip(board['rows'][side], players):
+                self.update_pick_row(row, player, draft, DRAFT_SIDE_COLOR[side])
+
+    def draw_ban_slot(self, c, slot):
         size = px(40)
-        c = tk.Canvas(parent, width=size, height=size, bg=CARD, highlightthickness=0, bd=0)
+        c.delete('all')
         name = slot and slot.get('champion')
         image = self.champ_image(name, 36) if name else None
         if image is not None:
@@ -2166,15 +2214,30 @@ class CollectorUI:
             # 밴 확정: 빨간 사선과 테두리
             c.create_line(px(5), size - px(5), size - px(5), px(5), fill=RED, width=max(2, px(3)))
             c.create_rectangle(1, 1, size - 1, size - 1, outline=RED, width=1)
-        return c
 
-    def pick_row(self, parent, player, draft, color):
+    def create_pick_row(self, parent):
+        row = tk.Frame(parent, bg=CARD, highlightthickness=1, highlightbackground=LINE)
+        icon = tk.Canvas(row, width=px(44), height=px(44), bg=CARD, highlightthickness=0, bd=0)
+        icon.pack(side='left', padx=px(8), pady=px(6))
+        text = tk.Frame(row, bg=CARD)
+        text.pack(side='left', fill='x', expand=True)
+        labels = [tk.Label(text, text='', bg=CARD, fg=FG, font=font(10, 'bold'), anchor='w'),
+                  tk.Label(text, text='', bg=CARD, fg=SUB, font=font(10), anchor='w'),
+                  tk.Label(text, text='', bg=CARD, fg=SUB, font=font(9), anchor='w')]
+        for label in labels:
+            label.pack(fill='x')
+        row.parts = (icon, text, labels)
+        return row
+
+    def update_pick_row(self, row, player, draft, color):
+        icon, text, (name_label, detail_label, summary_label) = row.parts
         active = player.get('active')
         bg = ACCENT_TINT if active else (MUTED if player.get('mine') else CARD)
-        row = tk.Frame(parent, bg=bg, highlightthickness=1, highlightbackground=ACCENT if active else LINE)
+        row.configure(bg=bg, highlightbackground=ACCENT if active else LINE)
+        icon.configure(bg=bg)
+        text.configure(bg=bg)
+        icon.delete('all')
         champion = player.get('champion') or player.get('intent')
-        icon = tk.Canvas(row, width=px(44), height=px(44), bg=bg, highlightthickness=0, bd=0)
-        icon.pack(side='left', padx=px(8), pady=px(6))
         image = self.champ_image(champion, 40) if champion else None
         if image is not None:
             icon.create_image(px(22), px(22), image=image)
@@ -2183,10 +2246,6 @@ class CollectorUI:
                 icon.create_rectangle(1, 1, px(43), px(43), outline=ACCENT, width=max(2, px(2)), dash=(4, 3))
         else:
             round_rect(icon, 2, 2, px(42), px(42), px(8), fill=MUTED, outline=LINE_STRONG)
-        text = tk.Frame(row, bg=bg)
-        text.pack(side='left', fill='x', expand=True)
-        tk.Label(text, text=player['name'] + ('  (나)' if player.get('mine') else ''), bg=bg, fg=FG,
-                 font=font(10, 'bold'), anchor='w').pack(fill='x')
         if player.get('champion'):
             detail, fg = player['champion'], color
             if self.scrim_stats is not None:
@@ -2198,18 +2257,23 @@ class CollectorUI:
             detail, fg = ('밴 하는 중' if active == 'ban' else '픽 하는 중'), '#9A6B12'
         else:
             detail, fg = '대기', SUB
-        tk.Label(text, text=detail, bg=bg, fg=fg, font=font(10), anchor='w').pack(fill='x')
-        tk.Label(text, text=self.scrim_summary(player), bg=bg, fg=SUB, font=font(9), anchor='w').pack(fill='x')
+        name_label.configure(text=player['name'] + ('  (나)' if player.get('mine') else ''), bg=bg)
+        detail_label.configure(text=detail, fg=fg, bg=bg)
+        summary_label.configure(text=self.scrim_summary(player), bg=bg)
+        widgets = [row, icon, text, name_label, detail_label, summary_label]
         if player.get('champion'):
             enemies = [p['champion'] for p in draft['players'] if p['side'] != player['side'] and p.get('champion')]
             label = '상대 팀' if player['side'] == draft.get('my_side') or not draft.get('my_side') else '우리 팀'
-            def open_counter(event=None, name=player['champion'], enemies=enemies, label=label):
+            def open_counter(event=None, name=player['champion'], enemies=enemies, label=label, ours=bool(draft.get('my_side'))):
                 self.show_tab(self.counter_tab, refresh=False)
-                self.show_counter(name, enemies, label if draft.get('my_side') else '상대 진영')
-            for widget in [row, icon, text] + list(text.winfo_children()):
+                self.show_counter(name, enemies, label if ours else '상대 진영')
+            for widget in widgets:
                 widget.bind('<Button-1>', open_counter)
                 widget.configure(cursor='hand2')
-        return row
+        else:
+            for widget in widgets:
+                widget.unbind('<Button-1>')
+                widget.configure(cursor='')
 
     def scrim_summary(self, player):
         """플레이어 이름 아래에 넣을 내전 전적 한 줄."""
@@ -2221,11 +2285,9 @@ class CollectorUI:
         top = ' · '.join(f'{name} {record_text(games, wins)}' for name, games, wins in top_scrim_champions(champs))
         return '내전 주력 · ' + top
 
-    def ban_suggestions(self, panel, draft):
+    def update_ban_suggestions(self, labels, draft):
         """상대 진영 플레이어들의 내전 주력 중 아직 밴·픽되지 않은 챔피언을 판수, 승률 순으로 3개 보여 준다."""
         my_side = draft.get('my_side')
-        if not my_side or self.scrim_stats is None:
-            return
         taken = {slot['champion'] for side in draft['bans'].values() for slot in side if slot and slot.get('champion')}
         taken |= {p['champion'] for p in draft['players'] if p.get('champion')}
         best = {}
@@ -2239,16 +2301,15 @@ class CollectorUI:
                 if champion not in best or rank > best[champion][0]:
                     best[champion] = (rank, player['name'].split('#')[0], games, wins)
         picks = sorted(best.items(), key=lambda item: item[1][0], reverse=True)[:3]
-        row = tk.Frame(panel, bg=MUTED, highlightthickness=1, highlightbackground=LINE)
-        row.pack(fill='x', pady=(0, px(12)))
-        tk.Label(row, text='추천 밴', bg=MUTED, fg=RED, font=font(10, 'bold')).pack(side='left', padx=(px(10), px(8)), pady=px(6))
         if not picks:
-            tk.Label(row, text='상대 팀 내전 기록 없음', bg=MUTED, fg=SUB, font=font(10)).pack(side='left')
-            return
-        for champion, (_, owner, games, wins) in picks:
-            image = self.champ_image(champion, 22)
-            tk.Label(row, text=f' {champion}({owner} {record_text(games, wins)})', image=image or '', compound='left',
-                     bg=MUTED, fg=FG, font=font(10)).pack(side='left', padx=(0, px(12)))
+            labels[0].configure(text='상대 팀 내전 기록 없음', image='', fg=SUB)
+        for index, label in enumerate(labels):
+            if index < len(picks):
+                champion, (_, owner, games, wins) = picks[index]
+                label.configure(text=f' {champion}({owner} {record_text(games, wins)})',
+                                image=self.champ_image(champion, 22) or '', fg=FG)
+            elif picks or index > 0:
+                label.configure(text='', image='')
 
     def tick_draft_timer(self, reschedule=True):
         if self.closing or not self.draft:
