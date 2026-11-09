@@ -1196,25 +1196,38 @@ class RoundButton(tk.Canvas):
 class Tooltip:
     """마우스를 올리면 짧은 설명을 띄운다."""
 
+    DELAY = 400  # ms. 마우스가 지나가기만 해도 번쩍 뜨지 않게 잠깐 기다린다.
+
     def __init__(self, widget, text):
-        self.widget, self.text, self.window = widget, text, None
-        widget.bind('<Enter>', self.show, add='+')
+        self.widget, self.text, self.window, self.job = widget, text, None, None
+        widget.bind('<Enter>', self.schedule, add='+')
         widget.bind('<Leave>', self.hide, add='+')
         widget.bind('<ButtonPress>', self.hide, add='+')
 
+    def schedule(self, event=None):
+        if self.job is None and self.window is None:
+            self.job = self.widget.after(self.DELAY, self.show)
+
     def show(self, event=None):
-        if self.window is not None:
+        self.job = None
+        if self.window is not None or not self.widget.winfo_exists():
             return
         x = self.widget.winfo_rootx() + self.widget.winfo_width() // 2
         y = self.widget.winfo_rooty() + self.widget.winfo_height() + px(6)
         self.window = tk.Toplevel(self.widget)
+        # 위치를 잡기 전에 화면 왼쪽 위에 잠깐 나타나지 않게 숨긴 채 만든다.
+        self.window.withdraw()
         self.window.wm_overrideredirect(True)
         label = tk.Label(self.window, text=self.text, bg=FG, fg=CARD, font=font(9), padx=px(8), pady=px(3))
         label.pack()
         self.window.update_idletasks()
-        self.window.wm_geometry(f'+{x - self.window.winfo_width() // 2}+{y}')
+        self.window.wm_geometry(f'+{x - self.window.winfo_reqwidth() // 2}+{y}')
+        self.window.deiconify()
 
     def hide(self, event=None):
+        if self.job is not None:
+            self.widget.after_cancel(self.job)
+            self.job = None
         if self.window is not None:
             self.window.destroy()
             self.window = None
@@ -2178,6 +2191,8 @@ class CollectorUI:
             self.conn_dot_color = DISABLED
             self.avatar_image = None
             self.draw_avatar(None, '?')
+            # 클라이언트가 꺼지면 참가자 탭의 빈 화면 안내도 '롤 클라이언트를 실행하고…'로 바꾼다.
+            self.update_lobby_empty()
             return
         self.account_name.set(data['name'] + (f" #{data['tag']}" if data['tag'] else ''))
         self.account_level.set(f"레벨 {data['level']}" if data.get('level') else '')
