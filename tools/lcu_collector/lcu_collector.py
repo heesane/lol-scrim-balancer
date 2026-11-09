@@ -599,6 +599,115 @@ def resolve_lobby_members(data, port, password, name_cache):
     return result
 
 
+# ---------- 챔피언 상성 데이터 (vschamp.lol) ----------
+# vschamp.lol 페이지가 쓰는 정적 JSON을 실행 시 받아 데이터 폴더에 하루 동안 캐시한다.
+# 저장소나 exe에는 복사본을 넣지 않는다. 받을 수 없으면 마지막 캐시를 쓰고, 그것도 없으면 기능만 꺼진다.
+COUNTER_SITE = 'https://vschamp.lol/'
+COUNTER_URL = COUNTER_SITE + 'champ.json?v=1.2.6'
+COUNTER_CACHE = os.path.join(DATA_DIR, 'vschamp_champ.json')
+COUNTER_MAX_AGE = 24 * 60 * 60
+COUNTER_HEADERS = {'User-Agent': 'ScrimCollector/2.0 (+https://lol-scrim-balancer.vercel.app)'}
+
+
+def norm_name(value):
+    return re.sub(r'\s+', '', str(value or '')).lower()
+
+
+def split_ref(value):
+    """'제라스(원딜, 미드)' -> ('제라스', ['원딜', '미드'])"""
+    match = re.match(r'^(.*?)\s*\(([^()]*)\)\s*$', str(value or ''))
+    if not match:
+        return str(value or '').strip(), []
+    return match.group(1).strip(), [part.strip() for part in match.group(2).split(',') if part.strip()]
+
+
+def clean_reason(value):
+    return re.sub(r'\s+', ' ', str(value or '')).strip()
+
+
+def http_get(url, timeout=10):
+    request = urllib.request.Request(url, headers=COUNTER_HEADERS)
+    with urllib.request.urlopen(request, context=ssl.create_default_context(), timeout=timeout) as response:
+        return response.read()
+
+
+def download_counter_data():
+    url = COUNTER_URL
+    try:
+        # 사이트가 데이터 버전(?v=)을 올리면 페이지에 적힌 최신 경로를 따른다.
+        found = re.search(r'champ\.json\?v=[\w.\-]+', http_get(COUNTER_SITE).decode('utf-8', 'ignore'))
+        if found:
+            url = COUNTER_SITE + found.group(0)
+    except Exception:
+        pass
+    data = json.loads(http_get(url, timeout=15).decode('utf-8'))
+    if not isinstance(data, list) or len(data) < 50 or not all(isinstance(e, dict) and e.get('champion') for e in data):
+        raise ValueError('상성 데이터 형식이 예상과 다릅니다.')
+    with open(COUNTER_CACHE + '.tmp', 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False)
+    os.replace(COUNTER_CACHE + '.tmp', COUNTER_CACHE)
+    return data
+
+
+def load_counter_data(force=False):
+    """(데이터, 상태 문구)를 돌려준다."""
+    try:
+        age = time.time() - os.path.getmtime(COUNTER_CACHE)
+    except OSError:
+        age = None
+    if age is not None and age < COUNTER_MAX_AGE and not force:
+        with open(COUNTER_CACHE, encoding='utf-8') as f:
+            return json.load(f), '오늘 받은 데이터'
+    try:
+        return download_counter_data(), '방금 받은 최신 데이터'
+    except Exception as exc:
+        if age is None:
+            raise ValueError(f'상성 데이터를 받을 수 없습니다 ({exc})')
+        with open(COUNTER_CACHE, encoding='utf-8') as f:
+            return json.load(f), f'최신 데이터를 받지 못해 {int(age // 86400)}일 전 데이터를 사용'
+
+
+class CounterIndex:
+    def __init__(self, entries):
+        self.entries = [e for e in entries if isinstance(e, dict) and e.get('champion')]
+        self.champions = {norm_name(e['champion']): e for e in self.entries}
+        self.lookup = dict(self.champions)
+        for entry in self.entries:
+            for alias in entry.get('aliases') or []:
+                self.lookup.setdefault(norm_name(alias), entry)
+
+    def get(self, name):
+        return self.champions.get(norm_name(name))
+
+    def find(self, query):
+        q = norm_name(query)
+        if not q:
+            return []
+        if q in self.lookup:
+            return [self.lookup[q]]
+        found = [e for key, e in self.lookup.items() if key.startswith(q)] or [e for key, e in self.lookup.items() if q in key]
+        unique = []
+        for entry in found:
+            if entry not in unique:
+                unique.append(entry)
+        return sorted(unique, key=lambda e: e['champion'])
+
+    def describe(self, entry):
+        """챔피언 카운터와 아이템·룬 같은 대처 요소를 나눠 정리한다."""
+        result = {'champion': entry['champion'], 'lines': entry.get('lines') or [], 'hard': [], 'general': [], 'extras': [],
+                  'synergy': [], 'combos': []}
+        for key in ('hard', 'general'):
+            for ref in entry.get(key + '_counters') or []:
+                if not isinstance(ref, dict):
+                    continue
+                name, lines = split_ref(ref.get('name'))
+                item = {'name': name, 'lines': lines, 'reason': clean_reason(ref.get('reason')), 'hard': key == 'hard'}
+                result[key if norm_name(name) in self.champions else 'extras'].append(item)
+        result['synergy'] = [split_ref(name)[0] for name in entry.get('synergy') or [] if isinstance(name, str)]
+        result['combos'] = [' + '.join(part.strip() for part in name.split('&')) for name in entry.get('combo_counters') or [] if isinstance(name, str)]
+        return result
+
+
 # ---------- 화면 디자인 ----------
 # 웹앱(index.html)의 밝은 테마 토큰에 맞춘 색. 포인트 색은 ACCENT 한 곳만 바꾸면 된다.
 BG = '#F3F4F7'
@@ -765,6 +874,10 @@ class CollectorUI:
         self.roster_retained = False
         self.icon_cache = {}
         self.avatar_image = None
+        self.counter_index = None
+        self.counter_auto_key = None
+        self.champ_select = None
+        self.champ_names = {}
         SCALE = max(1.0, root.winfo_fpixels('1i') / 96)
         root.title('내전 결과 수집기')
         root.geometry(f'{px(980)}x{px(760)}')
@@ -789,6 +902,9 @@ class CollectorUI:
             style.map(f'{orient}.TScrollbar', background=[('active', LINE_STRONG)])
         style.configure('TCombobox', fieldbackground=MUTED, background=MUTED, foreground=FG, bordercolor=LINE,
                         lightcolor=MUTED, darkcolor=MUTED, arrowcolor=SUB, padding=px(5))
+        style.configure('TEntry', fieldbackground=MUTED, foreground=FG, bordercolor=LINE, lightcolor=MUTED,
+                        darkcolor=MUTED, insertcolor=FG, padding=px(5))
+        style.map('TEntry', bordercolor=[('focus', ACCENT)], lightcolor=[('focus', MUTED)])
         style.map('TCombobox', fieldbackground=[('readonly', MUTED)], selectbackground=[('readonly', MUTED)],
                   selectforeground=[('readonly', FG)])
 
@@ -865,8 +981,9 @@ class CollectorUI:
         self.lobby_tab = tk.Frame(pages, bg=CARD)
         log_tab = tk.Frame(pages, bg=CARD)
         self.history_tab = tk.Frame(pages, bg=CARD)
+        self.counter_tab = tk.Frame(pages, bg=CARD)
         self.tab_buttons = {}
-        for name, page in [('현재 방 참가자', self.lobby_tab), ('실행 로그', log_tab), ('매치 히스토리', self.history_tab)]:
+        for name, page in [('현재 방 참가자', self.lobby_tab), ('카운터 정보', self.counter_tab), ('실행 로그', log_tab), ('매치 히스토리', self.history_tab)]:
             page.grid(row=0, column=0, sticky='nsew')
             holder = tk.Frame(tabs_bar, bg=CARD)
             holder.pack(side='left', padx=(0, px(18)))
@@ -940,6 +1057,7 @@ class CollectorUI:
         self.history_tree.bind('<Double-1>', self.show_match)
         self.history_tree.bind('<Return>', self.show_match)
 
+        self.build_counter_tab(self.counter_tab)
         self.show_tab(self.lobby_tab, refresh=False)
         self.append('수집 시작을 누르면 자동 업로드가 활성화됩니다.\n')
         root.report_callback_exception = self.ui_error
@@ -948,6 +1066,187 @@ class CollectorUI:
         root.after(200, self.refresh_lobby_loop)
         root.after(100, self.refresh_phase_loop)
         root.after(300, self.refresh_account_loop)
+        root.after(500, self.load_counters)
+
+    # ---------- 카운터 정보 탭 ----------
+    def build_counter_tab(self, tab):
+        head = tk.Frame(tab, bg=CARD)
+        head.pack(fill='x', pady=(0, px(8)))
+        self.counter_query = tk.StringVar()
+        entry = ttk.Entry(head, textvariable=self.counter_query, width=22, font=font(10))
+        entry.pack(side='left', ipady=px(3))
+        # 한글 입력기는 조합 중 엔터를 조합 확정에 써서 KeyPress가 오지 않을 수 있다.
+        # 그래서 키를 뗄 때도 받고, 조합된 글자가 입력칸에 반영된 뒤 검색한다.
+        self.enter_pressed = False
+        def on_press(event):
+            self.enter_pressed = True
+            self.root.after(30, self.search_counter)
+        def on_release(event):
+            if not self.enter_pressed:
+                self.root.after(30, self.search_counter)
+            self.enter_pressed = False
+        for key in ('Return', 'KP_Enter'):
+            entry.bind(f'<KeyPress-{key}>', on_press)
+            entry.bind(f'<KeyRelease-{key}>', on_release)
+        RoundButton(head, '검색', self.search_counter, kind='primary', height=30, size=9).pack(side='left', padx=(px(6), 0))
+        source = tk.Label(head, text='데이터 출처: vschamp.lol', bg=CARD, fg=SUB, font=font(9, 'underline'), cursor='hand2')
+        source.pack(side='right')
+        source.bind('<Button-1>', lambda e: __import__('webbrowser').open(COUNTER_SITE))
+        self.counter_picks = tk.Frame(tab, bg=CARD)
+        self.counter_picks.pack(fill='x')
+        self.counter_status = tk.StringVar(value='상성 데이터를 불러오는 중...')
+        tk.Label(tab, textvariable=self.counter_status, bg=CARD, fg=SUB, font=font(10), anchor='w').pack(fill='x', pady=(px(4), px(8)))
+        box = tk.Frame(tab, bg=CARD, highlightthickness=1, highlightbackground=LINE)
+        box.pack(fill='both', expand=True)
+        self.counter_text = tk.Text(box, wrap='word', font=font(10), bg=CARD, fg=FG, relief='flat', bd=0, highlightthickness=0,
+                                    padx=px(18), pady=px(14), spacing1=px(1), spacing3=px(1), cursor='arrow')
+        scroll = ttk.Scrollbar(box, orient='vertical', command=self.counter_text.yview)
+        self.counter_text.configure(yscrollcommand=scroll.set)
+        scroll.pack(side='right', fill='y')
+        self.counter_text.pack(side='left', fill='both', expand=True)
+        text = self.counter_text
+        text.tag_configure('title', font=font(17, 'bold'))
+        text.tag_configure('sub', foreground=SUB)
+        text.tag_configure('bar', foreground=ACCENT, font=font(12, 'bold'), spacing1=px(16), spacing3=px(6))
+        text.tag_configure('section', font=font(12, 'bold'), spacing1=px(16), spacing3=px(6))
+        text.tag_configure('name', font=font(10, 'bold'))
+        text.tag_configure('hit', foreground=RED, font=font(10, 'bold'))
+        text.tag_configure('reason', foreground=SUB, lmargin1=px(14), lmargin2=px(14), spacing1=px(2), spacing3=px(8))
+        text.tag_configure('alert', background='#FEF2F2', foreground=RED, font=font(10, 'bold'),
+                           lmargin1=px(10), lmargin2=px(10), rmargin=px(10), spacing1=px(8), spacing3=px(8))
+        text.tag_configure('good', background='#F0FDF4', foreground=GREEN, font=font(10, 'bold'),
+                           lmargin1=px(10), lmargin2=px(10), rmargin=px(10), spacing1=px(8), spacing3=px(8))
+        text.tag_configure('foot', foreground=SUB, font=font(9), spacing1=px(14))
+        self.write_counter_text([('챔피언 이름을 검색하거나, 챔피언 선택에 들어가면 내 챔피언의 상성을 자동으로 보여 줍니다.\n', 'sub')])
+
+    def write_counter_text(self, parts):
+        text = self.counter_text
+        text.configure(state='normal')
+        text.delete('1.0', 'end')
+        for chunk, tag in parts:
+            text.insert('end', chunk, tag or ())
+        text.configure(state='disabled')
+        text.yview_moveto(0)
+
+    def load_counters(self, force=False):
+        if 'counters' in self.view_busy:
+            return
+        self.view_busy.add('counters')
+        def fetch():
+            try:
+                data, origin = load_counter_data(force)
+                self.view_events.put(('counters', None, (CounterIndex(data), origin), None))
+            except Exception as exc:
+                self.view_events.put(('counters', None, None, str(exc)))
+        threading.Thread(target=fetch, daemon=True).start()
+
+    def render_counters(self, data, error):
+        if error:
+            self.counter_status.set(error + ' · 카운터 정보를 쓸 수 없습니다')
+            return
+        self.counter_index, origin = data
+        self.counter_status.set(f'챔피언 {len(self.counter_index.entries)}명 · {origin}')
+        if self.champ_select:
+            self.counter_auto_key = None
+            self.render_champ_select(self.champ_select)
+
+    def search_counter(self):
+        if not self.counter_index:
+            return
+        matches = self.counter_index.find(self.counter_query.get())
+        if not matches:
+            self.counter_status.set(f"'{self.counter_query.get().strip()}'에 맞는 챔피언이 없습니다")
+            return
+        self.show_counter(matches[0]['champion'])
+        if len(matches) > 1:
+            self.counter_status.set('다른 결과: ' + ', '.join(m['champion'] for m in matches[1:8]))
+
+    def show_counter(self, champion, highlight=(), highlight_label=''):
+        entry = self.counter_index.get(champion) if self.counter_index else None
+        if entry is None:
+            self.write_counter_text([(f'{champion}의 상성 정보가 없습니다.\n', 'sub')])
+            return
+        info = self.counter_index.describe(entry)
+        marked = {norm_name(name) for name in highlight}
+        parts = [(info['champion'], 'title'), ('   ' + ' · '.join(info['lines']) + '\n', 'sub')]
+        hits = [c['name'] for c in info['hard'] + info['general'] if norm_name(c['name']) in marked]
+        if hits:
+            parts.append((f"{highlight_label}에 {info['champion']}의 카운터가 있습니다: {', '.join(dict.fromkeys(hits))}\n", 'alert'))
+        elif marked:
+            parts.append((f"{highlight_label}에 {info['champion']}의 카운터 챔피언이 없습니다\n", 'good'))
+
+        def champions(title, items):
+            if not items:
+                return
+            parts.extend([('▍', 'bar'), (title + '\n', 'section')])
+            detailed = [c for c in items if c['reason']]
+            rest = [c for c in items if not c['reason']]
+            for c in detailed:
+                hit = norm_name(c['name']) in marked
+                parts.append((c['name'], 'hit' if hit else 'name'))
+                parts.append((('  ' + ', '.join(c['lines']) if c['lines'] else '') + ('  · ' + highlight_label if hit else '') + '\n', 'sub'))
+                parts.append((c['reason'] + '\n', 'reason'))
+            if rest:
+                parts.append(('그 밖에  ', 'sub'))
+                for index, c in enumerate(rest):
+                    hit = norm_name(c['name']) in marked
+                    parts.append((c['name'], 'hit' if hit else 'name'))
+                    if index < len(rest) - 1:
+                        parts.append((', ', 'sub'))
+                parts.append(('\n', None))
+
+        champions('하드 카운터', info['hard'])
+        champions('일반 카운터', info['general'])
+        champions('아이템·룬 등 대처 요소', info['extras'])
+        if info['synergy']:
+            parts.extend([('▍', 'bar'), ('함께하면 좋은 조합\n', 'section'), (' · '.join(info['synergy']) + '\n', None)])
+        if info['combos']:
+            parts.extend([('▍', 'bar'), ('까다로운 바텀 조합\n', 'section'), (' · '.join(info['combos']) + '\n', None)])
+        parts.append(('출처: vschamp.lol · 설명은 원문 그대로 보여 줍니다.\n', 'foot'))
+        self.write_counter_text(parts)
+
+    def fetch_champ_select(self):
+        port, password = collector.get_lcu_credentials()
+        if not port:
+            raise ValueError('롤 클라이언트에 연결할 수 없습니다.')
+        session = collector.query_lcu(port, password, '/lol-champ-select/v1/session')
+        if not isinstance(session, dict):
+            raise ValueError('챔피언 선택 정보를 읽을 수 없습니다.')
+        if not self.champ_names:
+            self.champ_names = load_champion_names(port, password)
+        def pick(player):
+            champion_id = player.get('championId') or player.get('championPickIntent') or 0
+            return self.champ_names.get(champion_id) if champion_id else None
+        local = session.get('localPlayerCellId')
+        mine = next((p for p in session.get('myTeam') or [] if p.get('cellId') == local), {})
+        return {'me': pick(mine),
+                'allies': [n for n in (pick(p) for p in session.get('myTeam') or [] if p is not mine) if n],
+                'enemies': [n for n in (pick(p) for p in session.get('theirTeam') or []) if n]}
+
+    def render_champ_select(self, data):
+        self.champ_select = data
+        key = (data['me'], tuple(data['allies']), tuple(data['enemies']))
+        if key == self.counter_auto_key:
+            return
+        self.counter_auto_key = key
+        for child in self.counter_picks.winfo_children():
+            child.destroy()
+        row = tk.Frame(self.counter_picks, bg=CARD)
+        row.pack(fill='x', pady=(px(2), px(2)))
+        tk.Label(row, text='챔피언 선택', bg=CARD, fg=SUB, font=font(9, 'bold')).pack(side='left', padx=(0, px(8)))
+        allies = ([data['me']] if data['me'] else []) + data['allies']
+        def view(name, ours):
+            return lambda: self.show_counter(name, data['enemies'] if ours else allies, '상대 팀' if ours else '우리 팀')
+        if data['me']:
+            RoundButton(row, '내 픽 ' + data['me'], view(data['me'], True), kind='pill', height=28, size=9).pack(side='left', padx=(0, px(4)))
+        for name in data['allies']:
+            RoundButton(row, name, view(name, True), height=28, size=9).pack(side='left', padx=(0, px(4)))
+        if data['enemies']:
+            tk.Label(row, text='vs', bg=CARD, fg=SUB, font=font(9, 'bold')).pack(side='left', padx=px(6))
+        for name in data['enemies']:
+            RoundButton(row, name, view(name, False), kind='danger', height=28, size=9).pack(side='left', padx=(0, px(4)))
+        if data['me'] and self.counter_index:
+            view(data['me'], True)()
 
     def show_tab(self, page, refresh=True):
         page.tkraise()
@@ -1111,6 +1410,9 @@ class CollectorUI:
                 if kind == 'account':
                     self.view_events.put((kind, source, self.fetch_account(), None))
                     return
+                if kind == 'champselect':
+                    self.view_events.put((kind, source, self.fetch_champ_select(), None))
+                    return
                 if kind == 'history' and source == '웹앱 내전 기록':
                     with urllib.request.urlopen(collector.SERVER_URL, context=ssl.create_default_context(), timeout=8) as response:
                         data = json.load(response)
@@ -1176,11 +1478,29 @@ class CollectorUI:
             if not self.closing:
                 self.render_account(data, error)
             return
+        if kind == 'counters':
+            if not self.closing:
+                self.render_counters(data, error)
+            return
+        if kind == 'champselect':
+            if not self.closing and not error and self.game_phase == 'ChampSelect':
+                self.render_champ_select(data)
+            return
         if kind == 'phase':
             previous = self.game_phase
             self.game_phase = None if error else data
             if self.game_phase in ('InProgress', 'Reconnect', 'GameStart') and previous not in ('InProgress', 'Reconnect', 'GameStart'):
                 self.submission_state = None
+            if self.game_phase == 'ChampSelect':
+                if previous != 'ChampSelect':
+                    # 챔피언 선택에 들어가면 카운터 탭을 한 번 띄운다.
+                    self.counter_auto_key = None
+                    self.show_tab(self.counter_tab, refresh=False)
+                self.refresh_view('champselect')
+            elif previous == 'ChampSelect':
+                self.champ_select = None
+                for child in self.counter_picks.winfo_children():
+                    child.destroy()
             self.update_game_status()
             if data == 'None' and not error:
                 self.last_lobby_data = None
