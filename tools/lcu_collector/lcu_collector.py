@@ -1584,11 +1584,30 @@ class CollectorUI:
         picker.pack(side='left')
         picker.bind('<<ComboboxSelected>>', lambda e: self.refresh_view('history'))
         IconButton(bar, 'refresh-cw', lambda: self.refresh_view('history'), '기록 새로고침').pack(side='right')
-        self.history_status = tk.StringVar(value='새로고침을 눌러 기록을 불러오세요. 행을 더블클릭하면 상세 정보를 봅니다.')
+        self.history_status = tk.StringVar(value='새로고침을 눌러 기록을 불러오세요. 경기를 고르면 아래에 상세 정보가 나옵니다.')
         tk.Label(self.history_tab, textvariable=self.history_status, bg=CARD, fg=SUB, font=font(10)).pack(anchor='w', pady=(0, px(8)))
-        self.history_tree = self.make_table(self.history_tab, [('date', '일시'), ('mode', '종류'), ('result', '결과'), ('duration', '시간'), ('id', '경기 ID')])
-        self.history_tree.bind('<Double-1>', self.show_match)
-        self.history_tree.bind('<Return>', self.show_match)
+        # 목록 아래에 상세를 바로 보여 준다. 경계선을 끌어 두 칸의 높이를 바꿀 수 있다.
+        history_split = tk.PanedWindow(self.history_tab, orient='vertical', bg=CARD, bd=0, sashwidth=px(8), sashrelief='flat', opaqueresize=True)
+        history_split.pack(fill='both', expand=True)
+        list_pane = tk.Frame(history_split, bg=CARD)
+        detail_pane = tk.Frame(history_split, bg=CARD, highlightthickness=1, highlightbackground=LINE)
+        history_split.add(list_pane, minsize=px(120), stretch='always')
+        history_split.add(detail_pane, minsize=px(100), height=px(260), stretch='always')
+        self.history_tree = self.make_table(list_pane, [('date', '일시'), ('mode', '종류'), ('result', '결과'), ('duration', '시간'), ('id', '경기 ID')])
+        self.history_tree.bind('<<TreeviewSelect>>', self.show_match)
+        self.match_box = tk.Text(detail_pane, wrap='word', font=font(10), bg=CARD, fg=FG, selectbackground=ACCENT_SOFT, selectforeground=FG, inactiveselectbackground=ACCENT_TINT,
+                                 relief='flat', bd=0, highlightthickness=0, padx=px(18), pady=px(14), spacing1=px(2), spacing3=px(2))
+        match_scroll = ttk.Scrollbar(detail_pane, orient='vertical', command=self.match_box.yview)
+        self.match_box.configure(yscrollcommand=match_scroll.set)
+        match_scroll.pack(side='right', fill='y')
+        self.match_box.pack(side='left', fill='both', expand=True)
+        self.match_box.tag_configure('meta', foreground=SUB)
+        self.match_box.tag_configure('blue', foreground=BLUE, font=font(12, 'bold'), spacing1=px(10))
+        self.match_box.tag_configure('red', foreground=RED, font=font(12, 'bold'), spacing1=px(10))
+        self.match_box.tag_configure('me', font=font(10, 'bold'))
+        self.match_record = None
+        self.match_games = {}
+        self.clear_match_detail()
 
         self.build_counter_tab(self.counter_tab)
         self.show_tab(self.lobby_tab, refresh=False)
@@ -2675,9 +2694,12 @@ class CollectorUI:
                 self.render_icons(data)
             return
         if kind == 'matchdetail':
-            box, record, game = data
-            if not self.closing and box.winfo_exists():
-                self.write_lcu_match(box, record, game, error)
+            record, game = data
+            if game is not None:
+                self.match_games[record.get('gameId')] = game
+            # 받는 사이에 다른 경기를 골랐으면 지금 보이는 상세를 덮어쓰지 않는다.
+            if not self.closing and record is self.match_record:
+                self.write_lcu_match(record, game, error)
             return
         if kind == 'scrimstats':
             if error:
@@ -2751,7 +2773,11 @@ class CollectorUI:
             self.red_title.set('레드팀 · 0명')
             self.other_members.set('')
         else:
+            # 새로고침해도 보고 있던 경기를 다시 고를 수 있게 경기 ID를 기억해 둔다.
+            selected = tree.selection()
+            keep_id = str(tree.set(selected[0], 'id')) if selected else None
             tree.delete(*tree.get_children())
+            self.clear_match_detail()
         status = self.lobby_status if kind == 'lobby' else self.history_status
         if error:
             status.set(error)
@@ -2797,34 +2823,37 @@ class CollectorUI:
                 item = tree.insert('', 'end', values=values)
                 self.history_records[item] = (source, record)
             self.stripe(tree)
-            status.set(f'{len(self.history_records)}경기 · 더블클릭하면 상세 정보를 봅니다.')
+            status.set(f'{len(self.history_records)}경기 · 경기를 고르면 아래에 상세 정보가 나옵니다.')
+            again = next((item for item in tree.get_children() if keep_id and str(tree.set(item, 'id')) == keep_id), None)
+            if again:
+                tree.selection_set(again)
+                tree.see(again)
+
+    def clear_match_detail(self):
+        self.match_record = None
+        box = self.match_box
+        box.configure(state='normal')
+        box.delete('1.0', 'end')
+        box.insert('end', '위 목록에서 경기를 고르면 여기에 양 팀 기록이 나옵니다.\n', 'meta')
+        box.configure(state='disabled')
 
     def show_match(self, event=None):
         selected = self.history_tree.selection()
-        if not selected or selected[0] not in self.history_records: return
-        source, record = self.history_records[selected[0]]
-        window = tk.Toplevel(self.root)
-        window.title('경기 상세')
-        window.geometry(f'{px(820)}x{px(520)}')
-        window.configure(bg=BG)
-        holder = tk.Frame(window, bg=CARD, highlightthickness=1, highlightbackground=LINE)
-        holder.pack(fill='both', expand=True, padx=px(16), pady=px(16))
-        box = tk.Text(holder, wrap='word', font=font(10), bg=CARD, fg=FG, selectbackground=ACCENT_SOFT, selectforeground=FG, inactiveselectbackground=ACCENT_TINT, relief='flat', bd=0, highlightthickness=0,
-                      padx=px(18), pady=px(16), spacing1=px(2), spacing3=px(2))
-        scroll = ttk.Scrollbar(holder, orient='vertical', command=box.yview)
-        box.configure(yscrollcommand=scroll.set)
-        scroll.pack(side='right', fill='y')
-        box.pack(side='left', fill='both', expand=True)
-        box.tag_configure('meta', foreground=SUB)
-        box.tag_configure('blue', foreground=BLUE, font=font(12, 'bold'), spacing1=px(10))
-        box.tag_configure('red', foreground=RED, font=font(12, 'bold'), spacing1=px(10))
-        box.tag_configure('me', font=font(10, 'bold'))
-        if source == '웹앱 내전 기록':
-            self.write_web_match(box, record)
+        if not selected or selected[0] not in self.history_records:
             return
-        box.insert('end', '전체 경기 기록을 불러오는 중...\n', 'meta')
-        box.configure(state='disabled')
-        # 목록의 경기에는 내 기록만 들어 있으므로, 상세 창을 열 때 양 팀 전체 기록을 따로 받는다.
+        source, record = self.history_records[selected[0]]
+        if record is self.match_record:
+            return
+        self.match_record = record
+        if source == '웹앱 내전 기록':
+            self.write_web_match(record)
+            return
+        game = self.match_games.get(record.get('gameId'))
+        if game is not None:
+            self.write_lcu_match(record, game, None)
+            return
+        # 목록의 경기에는 내 기록만 들어 있다. 내 기록을 먼저 보여 주고, 양 팀 전체 기록은 따로 받아 바꿔 넣는다.
+        self.write_lcu_match(record, None, None, loading=True)
         def fetch():
             try:
                 port, password = collector.get_lcu_credentials()
@@ -2836,12 +2865,15 @@ class CollectorUI:
                 names = load_champion_names(port, password)
                 for participant in game.get('participants') or []:
                     participant['championName'] = resolve_champion_name(participant, names)
-                self.view_events.put(('matchdetail', None, (box, record, game), None))
+                self.view_events.put(('matchdetail', None, (record, game), None))
             except Exception as exc:
-                self.view_events.put(('matchdetail', None, (box, record, None), str(exc)))
+                self.view_events.put(('matchdetail', None, (record, None), str(exc)))
         threading.Thread(target=fetch, daemon=True).start()
 
-    def write_web_match(self, box, record):
+    def write_web_match(self, record):
+        box = self.match_box
+        box.configure(state='normal')
+        box.delete('1.0', 'end')
         winner = WINNER_LABELS.get(str(record.get('winner', '')).upper(), '승리 팀 알 수 없음')
         meta = [f"경기 {record.get('matchId','')}", record.get('date', ''), winner, record.get('duration', '')]
         if record.get('mvp'):
@@ -2853,8 +2885,9 @@ class CollectorUI:
                 box.insert('end', f"  {player.get('name','')}  /  {player.get('champion','')}  /  {('미확인' if player.get('role') in ('UNKNOWN', None, '') else player.get('role'))}  /  KDA {player.get('kda','')}  /  딜량 {player.get('damage','')}  /  CS {player.get('cs','')}\n")
         box.configure(state='disabled')
 
-    def write_lcu_match(self, box, record, game, error):
+    def write_lcu_match(self, record, game, error, loading=False):
         """내 계정 경기 상세. 전체 기록(game)을 받았으면 양 팀 10명을, 못 받았으면 목록에 있던 내 기록만 보여 준다."""
+        box = self.match_box
         source = game or record
         identities = {i.get('participantId'): i.get('player') or {} for i in source.get('participantIdentities') or []}
         mine = (record.get('participantIdentities') or [{}])
@@ -2869,7 +2902,9 @@ class CollectorUI:
         box.delete('1.0', 'end')
         meta = [f"경기 {source.get('gameId','')}", record.get('_modeLabel') or source.get('gameMode', ''), date, duration]
         box.insert('end', '  ·  '.join(m for m in meta if m) + '\n', 'meta')
-        if error:
+        if loading:
+            box.insert('end', '양 팀 전체 기록을 불러오는 중...\n', 'meta')
+        elif error:
             box.insert('end', f'{error} · 목록에 있던 내 기록만 보여 줍니다.\n', 'meta')
         results = {t.get('teamId'): t.get('win') for t in source.get('teams') or []}
         for team_id, key, label in [(100, 'blue', '블루팀'), (200, 'red', '레드팀')]:
