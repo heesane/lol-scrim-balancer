@@ -1656,6 +1656,7 @@ class CollectorUI:
         self.counter_picks.pack(fill='x')
         self.pick_rows = None
         self.counter_status = tk.StringVar(value='상성 데이터를 불러오는 중...')
+        self.counter_status_base = ''
         tk.Label(tab, textvariable=self.counter_status, bg=CARD, fg=SUB, font=font(10), anchor='w').pack(fill='x', pady=(px(4), px(8)))
         body = tk.Frame(tab, bg=CARD)
         body.pack(fill='both', expand=True)
@@ -1806,28 +1807,37 @@ class CollectorUI:
 
     def render_counters(self, data, error):
         if error:
-            self.counter_status.set(error + ' · 카운터 정보를 쓸 수 없습니다')
+            self.counter_status.set(error + ' · 카운터 정보를 쓸 수 없습니다. 검색을 누르면 다시 받습니다')
             return
         self.counter_index, origin = data
-        self.counter_status.set(f'챔피언 {len(self.counter_index.entries)}명 · {origin}')
+        self.counter_status_base = f'챔피언 {len(self.counter_index.entries)}명 · {origin}'
+        self.counter_status.set(self.counter_status_base)
         if self.champ_select:
             self.counter_auto_key = None
             self.render_champ_select(self.champ_select)
 
     def search_counter(self):
         if not self.counter_index:
+            # 데이터를 받지 못했으면 검색할 때 다시 받아 본다.
+            self.counter_status.set('상성 데이터를 다시 불러오는 중...')
+            self.load_counters()
             return
-        if self.counter_placeholder and self.counter_query.get() == self.counter_placeholder_text:
+        query = '' if self.counter_placeholder else self.counter_query.get().strip()
+        if not query:
+            self.counter_status.set('검색할 챔피언 이름을 입력하세요')
             return
         self.counter_placeholder = False
         self.counter_entry.configure(style='TEntry')
-        matches = self.counter_index.find(self.counter_query.get())
+        matches = self.counter_index.find(query)
         if not matches:
-            self.counter_status.set(f"'{self.counter_query.get().strip()}'에 맞는 챔피언이 없습니다")
+            self.counter_status.set(f"'{query}'에 맞는 챔피언이 없습니다")
             return
         self.show_counter(matches[0]['champion'])
+        # 이전 검색의 '다른 결과' 안내가 남지 않게 매번 상태 줄을 다시 쓴다.
         if len(matches) > 1:
             self.counter_status.set('다른 결과: ' + ', '.join(m['champion'] for m in matches[1:8]))
+        else:
+            self.counter_status.set(self.counter_status_base)
 
     def show_counter(self, champion, highlight=(), highlight_label='', scroll=0.0):
         entry = self.counter_index.get(champion) if self.counter_index else None
