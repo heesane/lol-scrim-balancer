@@ -1118,6 +1118,18 @@ class RoundButton(tk.Canvas):
             self.kind = kind
             self.draw()
 
+    def set_content(self, text, command, kind, image=None):
+        """위젯을 새로 만들지 않고 글자·아이콘·동작·색만 바꾼다(새 위젯은 처음 그려질 때까지 비어 보여 깜빡인다)."""
+        self.text, self.command, self.kind, self.image = text, command, kind, image
+        measure = tkfont.Font(font=font(self.size, 'bold')).measure(text)
+        if image is not None:
+            measure += image.width() + px(6)
+        width = measure + px(34)
+        if width != self.w:
+            self.w = width
+            super().configure(width=width)
+        self.draw()
+
     def _set_focus(self, value):
         self._focus = value
         self.draw()
@@ -1642,6 +1654,7 @@ class CollectorUI:
         source.bind('<Button-1>', lambda e: __import__('webbrowser').open(COUNTER_SITE))
         self.counter_picks = tk.Frame(tab, bg=CARD)
         self.counter_picks.pack(fill='x')
+        self.pick_rows = None
         self.counter_status = tk.StringVar(value='상성 데이터를 불러오는 중...')
         tk.Label(tab, textvariable=self.counter_status, bg=CARD, fg=SUB, font=font(10), anchor='w').pack(fill='x', pady=(px(4), px(8)))
         body = tk.Frame(tab, bg=CARD)
@@ -2017,28 +2030,43 @@ class CollectorUI:
         if key == self.counter_auto_key and not rebuild_only:
             return
         self.counter_auto_key = key
-        for child in self.counter_picks.winfo_children():
-            child.destroy()
         allies = ([data['me']] if data['me'] else []) + data['allies']
         def view(name, ours):
             return lambda: self.show_counter(name, data['enemies'] if ours else allies, '상대 팀' if ours else '우리 팀')
-        def team_row(label, color):
-            row = tk.Frame(self.counter_picks, bg=CARD)
-            row.pack(fill='x', pady=(px(2), px(2)))
-            tk.Label(row, text=label, bg=CARD, fg=color, font=font(9, 'bold'), width=6, anchor='w').pack(side='left')
-            return row
-        def button(row, label, name, ours, kind):
-            RoundButton(row, label, view(name, ours), kind=kind, height=32, size=9,
-                        image=self.champ_image(name, 22)).pack(side='left', padx=(0, px(4)))
-        ours_row = team_row('우리 팀', BLUE)
-        if data['me']:
-            button(ours_row, '내 픽 ' + data['me'], data['me'], True, 'pill')
-        for name in data['allies']:
-            button(ours_row, name, name, True, 'secondary')
-        if data['enemies']:
-            theirs_row = team_row('상대 팀', RED)
-            for name in data['enemies']:
-                button(theirs_row, name, name, False, 'danger')
+        # 픽이 바뀔 때마다 버튼을 지우고 새로 만들면 새 버튼이 그려질 때까지 줄이 비어 보여 깜빡이므로,
+        # 줄과 버튼은 남겨 두고 글자·아이콘·동작만 바꾼다. 모자라면 만들고 남으면 지운다.
+        rows = self.pick_rows
+        if rows is None or not rows['ours'][0].winfo_exists():
+            for child in self.counter_picks.winfo_children():
+                child.destroy()
+            rows = self.pick_rows = {}
+            for side, label, color in (('ours', '우리 팀', BLUE), ('theirs', '상대 팀', RED)):
+                row = tk.Frame(self.counter_picks, bg=CARD)
+                tk.Label(row, text=label, bg=CARD, fg=color, font=font(9, 'bold'), width=6, anchor='w').pack(side='left')
+                rows[side] = (row, [])
+        wanted = {'ours': ([('내 픽 ' + data['me'], data['me'], 'pill')] if data['me'] else [])
+                          + [(name, name, 'secondary') for name in data['allies']],
+                  'theirs': [(name, name, 'danger') for name in data['enemies']]}
+        for side in ('ours', 'theirs'):
+            row, buttons = rows[side]
+            items = wanted[side]
+            for index, (label, name, kind) in enumerate(items):
+                command, image = view(name, side == 'ours'), self.champ_image(name, 22)
+                if index < len(buttons):
+                    buttons[index].set_content(label, command, kind, image)
+                else:
+                    button = RoundButton(row, label, command, kind=kind, height=32, size=9, image=image)
+                    button.pack(side='left', padx=(0, px(4)))
+                    buttons.append(button)
+            for button in buttons[len(items):]:
+                button.destroy()
+            del buttons[len(items):]
+            # 우리 팀 줄은 늘 보이고, 상대 팀 줄은 상대 픽이 있을 때만 보인다.
+            visible = side == 'ours' or bool(items)
+            if visible and not row.winfo_manager():
+                row.pack(fill='x', pady=(px(2), px(2)))
+            elif not visible and row.winfo_manager():
+                row.pack_forget()
         if data['me'] and self.counter_index and not rebuild_only:
             view(data['me'], True)()
         self.request_icons()
@@ -2606,6 +2634,7 @@ class CollectorUI:
                 self.draft_key = None
                 for child in self.counter_picks.winfo_children():
                     child.destroy()
+                self.pick_rows = None
             self.update_game_status()
             if data == 'None' and not error:
                 self.last_lobby_data = None
