@@ -723,6 +723,17 @@ def run_worker():
 
 
 
+MAP_NAMES = {11: '소환사의 협곡', 12: '칼바람 나락', 30: '아레나'}
+WINNER_LABELS = {'BLUE': '블루팀 승리', 'RED': '레드팀 승리'}
+
+
+def game_mode_label(game, queue_names):
+    """매치 히스토리의 종류 칸. CLASSIC·KIWI 같은 모드 코드 대신 클라이언트의 한국어 큐 이름을 쓴다."""
+    if str(game.get('gameType') or '').upper() == 'CUSTOM_GAME':
+        return '사용자 설정 · ' + MAP_NAMES.get(game.get('mapId'), str(game.get('gameMode') or ''))
+    return queue_names.get(game.get('queueId')) or MAP_NAMES.get(game.get('mapId')) or str(game.get('gameMode') or '')
+
+
 def resolve_lobby_members(data, port, password, name_cache):
     config = data.get('gameConfig') or {}
     def key(member):
@@ -1310,6 +1321,7 @@ class CollectorUI:
         self.view_events = queue.Queue()
         self.view_busy = set()
         self.history_records = {}
+        self.queue_names = {}
         self.lobby_name_cache = {}
         self.last_lobby_data = None
         self.roster_retained = False
@@ -2308,7 +2320,12 @@ class CollectorUI:
                     if kind == 'history':
                         me = collector.query_lcu(port, password, '/lol-summoner/v1/current-summoner') or {}
                         names = load_champion_names(port, password)
+                        if not self.queue_names:
+                            queues = collector.query_lcu(port, password, '/lol-game-queues/v1/queues')
+                            if isinstance(queues, list):
+                                self.queue_names = {q.get('id'): q.get('name') for q in queues if isinstance(q, dict) and q.get('name')}
                         for game in result:
+                            game['_modeLabel'] = game_mode_label(game, self.queue_names)
                             for identity in game.get('participantIdentities', []):
                                 player = identity.get('player') or {}
                                 if me.get('puuid') and player.get('puuid') == me['puuid']:
@@ -2612,6 +2629,11 @@ class CollectorUI:
             if not self.closing:
                 self.render_icons(data)
             return
+        if kind == 'matchdetail':
+            box, record, game = data
+            if not self.closing and box.winfo_exists():
+                self.write_lcu_match(box, record, game, error)
+            return
         if kind == 'scrimstats':
             if error:
                 # 실패하면 1분 뒤에 다시 받는다. 이전 기록이 있으면 그대로 쓴다.
@@ -2714,7 +2736,7 @@ class CollectorUI:
             for index, record in enumerate(data):
                 if not isinstance(record, dict): continue
                 if source == '웹앱 내전 기록':
-                    winner = {'BLUE': '블루팀 승리', 'RED': '레드팀 승리'}.get(str(record.get('winner', '')).upper(), '알 수 없음')
+                    winner = WINNER_LABELS.get(str(record.get('winner', '')).upper(), '알 수 없음')
                     values = (record.get('date',''), '내전', winner, record.get('duration','알 수 없음'), record.get('matchId',''))
                 else:
                     stamp = record.get('gameCreation')
@@ -2726,7 +2748,7 @@ class CollectorUI:
                     stats = own.get('stats') or {}
                     win = stats.get('win')
                     result = '승리' if win is True else '패배' if win is False else '알 수 없음'
-                    values = (date, record.get('gameMode',''), result, duration, record.get('gameId',''))
+                    values = (date, record.get('_modeLabel') or record.get('gameMode',''), result, duration, record.get('gameId',''))
                 item = tree.insert('', 'end', values=values)
                 self.history_records[item] = (source, record)
             self.stripe(tree)
@@ -2738,7 +2760,7 @@ class CollectorUI:
         source, record = self.history_records[selected[0]]
         window = tk.Toplevel(self.root)
         window.title('경기 상세')
-        window.geometry(f'{px(780)}x{px(480)}')
+        window.geometry(f'{px(820)}x{px(520)}')
         window.configure(bg=BG)
         holder = tk.Frame(window, bg=CARD, highlightthickness=1, highlightbackground=LINE)
         holder.pack(fill='both', expand=True, padx=px(16), pady=px(16))
@@ -2751,21 +2773,79 @@ class CollectorUI:
         box.tag_configure('meta', foreground=SUB)
         box.tag_configure('blue', foreground=BLUE, font=font(12, 'bold'), spacing1=px(10))
         box.tag_configure('red', foreground=RED, font=font(12, 'bold'), spacing1=px(10))
+        box.tag_configure('me', font=font(10, 'bold'))
         if source == '웹앱 내전 기록':
-            box.insert('end', f"경기 {record.get('matchId','')}  ·  승리 {record.get('winner','')}  ·  {record.get('duration','')}\n", 'meta')
-            for key, label in [('blue','블루팀'),('red','레드팀')]:
-                box.insert('end', label + '\n', key)
-                for player in record.get(key,[]) or []:
-                    box.insert('end', f"  {player.get('name','')}  /  {player.get('champion','')}  /  {('미확인' if player.get('role') in ('UNKNOWN', None, '') else player.get('role'))}  /  KDA {player.get('kda','')}  /  딜량 {player.get('damage','')}  /  CS {player.get('cs','')}\n")
-        else:
-            identities = {i.get('participantId'): i.get('player',{}) for i in record.get('participantIdentities',[]) or []}
-            lines = [f"경기: {record.get('gameId','')}  |  {record.get('gameMode','')}", '']
-            for player in record.get('participants',[]) or []:
-                identity = identities.get(player.get('participantId'),{})
+            self.write_web_match(box, record)
+            return
+        box.insert('end', '전체 경기 기록을 불러오는 중...\n', 'meta')
+        box.configure(state='disabled')
+        # 목록의 경기에는 내 기록만 들어 있으므로, 상세 창을 열 때 양 팀 전체 기록을 따로 받는다.
+        def fetch():
+            try:
+                port, password = collector.get_lcu_credentials()
+                if not port:
+                    raise ValueError('롤 클라이언트에 연결할 수 없습니다')
+                game = collector.query_lcu(port, password, f"/lol-match-history/v1/games/{record.get('gameId')}")
+                if not isinstance(game, dict) or not game_id_equal(game.get('gameId'), record.get('gameId')):
+                    raise ValueError('전체 경기 기록을 받지 못했습니다')
+                names = load_champion_names(port, password)
+                for participant in game.get('participants') or []:
+                    participant['championName'] = resolve_champion_name(participant, names)
+                self.view_events.put(('matchdetail', None, (box, record, game), None))
+            except Exception as exc:
+                self.view_events.put(('matchdetail', None, (box, record, None), str(exc)))
+        threading.Thread(target=fetch, daemon=True).start()
+
+    def write_web_match(self, box, record):
+        winner = WINNER_LABELS.get(str(record.get('winner', '')).upper(), '승리 팀 알 수 없음')
+        meta = [f"경기 {record.get('matchId','')}", record.get('date', ''), winner, record.get('duration', '')]
+        if record.get('mvp'):
+            meta.append(f"MVP {record['mvp']}")
+        box.insert('end', '  ·  '.join(m for m in meta if m) + '\n', 'meta')
+        for key, label in [('blue','블루팀'),('red','레드팀')]:
+            box.insert('end', label + '\n', key)
+            for player in record.get(key,[]) or []:
+                box.insert('end', f"  {player.get('name','')}  /  {player.get('champion','')}  /  {('미확인' if player.get('role') in ('UNKNOWN', None, '') else player.get('role'))}  /  KDA {player.get('kda','')}  /  딜량 {player.get('damage','')}  /  CS {player.get('cs','')}\n")
+        box.configure(state='disabled')
+
+    def write_lcu_match(self, box, record, game, error):
+        """내 계정 경기 상세. 전체 기록(game)을 받았으면 양 팀 10명을, 못 받았으면 목록에 있던 내 기록만 보여 준다."""
+        source = game or record
+        identities = {i.get('participantId'): i.get('player') or {} for i in source.get('participantIdentities') or []}
+        mine = (record.get('participantIdentities') or [{}])
+        my_puuid = next((i.get('player', {}).get('puuid') for i in mine
+                         if game_id_equal(i.get('participantId'), record.get('_localParticipantId'))), None) \
+            or (mine[0].get('player', {}).get('puuid') if len(mine) == 1 else None)
+        stamp = source.get('gameCreation')
+        date = datetime.datetime.fromtimestamp(stamp / 1000).strftime('%Y-%m-%d %H:%M') if isinstance(stamp, (int, float)) else ''
+        length = source.get('gameDuration')
+        duration = f'{int(length)//60}분 {int(length)%60:02d}초' if isinstance(length, (int, float)) else ''
+        box.configure(state='normal')
+        box.delete('1.0', 'end')
+        meta = [f"경기 {source.get('gameId','')}", record.get('_modeLabel') or source.get('gameMode', ''), date, duration]
+        box.insert('end', '  ·  '.join(m for m in meta if m) + '\n', 'meta')
+        if error:
+            box.insert('end', f'{error} · 목록에 있던 내 기록만 보여 줍니다.\n', 'meta')
+        results = {t.get('teamId'): t.get('win') for t in source.get('teams') or []}
+        for team_id, key, label in [(100, 'blue', '블루팀'), (200, 'red', '레드팀')]:
+            players = [p for p in source.get('participants') or [] if p.get('teamId') == team_id]
+            if not players:
+                continue
+            outcome = {'Win': ' · 승리', 'Fail': ' · 패배'}.get(results.get(team_id), '')
+            box.insert('end', label + outcome + '\n', key)
+            for player in players:
+                identity = identities.get(player.get('participantId'), {})
                 name = identity.get('gameName') or identity.get('summonerName') or '이름 확인 불가'
+                if identity.get('gameName') and identity.get('tagLine'):
+                    name += '#' + identity['tagLine']
                 stats = player.get('stats') or {}
-                lines.append(f"{name}  /  {player.get('championName') or ('챔피언 ID ' + str(player.get('championId','')))}  /  KDA {stats.get('kills','?')}/{stats.get('deaths','?')}/{stats.get('assists','?')}")
-            box.insert('end', '\n'.join(lines))
+                champion = player.get('championName') or ('챔피언 ID ' + str(player.get('championId', '')))
+                damage = stats.get('totalDamageDealtToChampions')
+                cs = (stats.get('totalMinionsKilled') or 0) + (stats.get('neutralMinionsKilled') or 0)
+                is_me = bool(my_puuid) and identity.get('puuid') == my_puuid
+                line = (f"  {name}{'  (나)' if is_me else ''}  /  {champion}  /  KDA {stats.get('kills','?')}/{stats.get('deaths','?')}/{stats.get('assists','?')}"
+                        + (f"  /  딜량 {damage:,}" if isinstance(damage, int) else '') + f"  /  CS {cs}\n")
+                box.insert('end', line, 'me' if is_me else ())
         box.configure(state='disabled')
 
     def append(self, text):
