@@ -33,10 +33,34 @@ def data_dir():
 
 DATA_DIR = data_dir()
 
+_LCU_SSL = None
+_WEB_SSL = None
+
+
+def lcu_ssl_context():
+    """롤 클라이언트(127.0.0.1) 연결용 SSL 설정. 클라이언트는 자체 서명 인증서를 쓰므로 검사하지 않는다.
+
+    ssl.create_default_context()는 만들 때마다 Windows 인증서 저장소를 읽어 한 번에 CPU를 30ms 넘게 쓴다.
+    롤 클라이언트에는 몇 초마다 여러 번 물어보므로, 인증서를 읽지 않는 설정을 한 번만 만들어 다시 쓴다.
+    """
+    global _LCU_SSL
+    if _LCU_SSL is None:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        _LCU_SSL = ctx
+    return _LCU_SSL
+
+
+def web_ssl_context():
+    """웹앱·Data Dragon 같은 외부 HTTPS 연결용 SSL 설정. 인증서를 검사하며, 한 번만 만들어 다시 쓴다."""
+    global _WEB_SSL
+    if _WEB_SSL is None:
+        _WEB_SSL = ssl.create_default_context()
+    return _WEB_SSL
+
 def test_lcu_connection(port, password):
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
+    ctx = lcu_ssl_context()
     url = f"https://127.0.0.1:{port}/help"
     auth_header = "Basic " + base64.b64encode(f"riot:{password}".encode()).decode()
     req = urllib.request.Request(url, headers={"Authorization": auth_header})
@@ -144,9 +168,7 @@ def read_lockfile_credentials(possible_paths):
     return None, None, None
 
 def query_lcu(port, password, endpoint):
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
+    ctx = lcu_ssl_context()
     url = f"https://127.0.0.1:{port}{endpoint}"
     auth_header = "Basic " + base64.b64encode(f"riot:{password}".encode()).decode()
     req = urllib.request.Request(url, headers={"Authorization": auth_header})
@@ -193,7 +215,7 @@ def is_scrim(data):
 
 
 def push_match_to_cloud(match_data):
-    ctx = ssl.create_default_context()
+    ctx = web_ssl_context()
     try:
         preserve_match(match_data)
         req_get = urllib.request.Request(SERVER_URL, headers={"Accept": "application/json"})
@@ -848,7 +870,7 @@ def clean_reason(value):
 
 def http_get(url, timeout=10):
     request = urllib.request.Request(url, headers=COUNTER_HEADERS)
-    with urllib.request.urlopen(request, context=ssl.create_default_context(), timeout=timeout) as response:
+    with urllib.request.urlopen(request, context=web_ssl_context(), timeout=timeout) as response:
         return response.read()
 
 
@@ -2294,14 +2316,14 @@ class CollectorUI:
                     self.view_events.put((kind, source, self.fetch_champ_select(), None))
                     return
                 if kind == 'scrimstats':
-                    with urllib.request.urlopen(collector.SERVER_URL, context=ssl.create_default_context(), timeout=8) as response:
+                    with urllib.request.urlopen(collector.SERVER_URL, context=web_ssl_context(), timeout=8) as response:
                         records = json.load(response).get('matchHistory', [])
                     if not isinstance(records, list):
                         raise ValueError('경기 목록 형식을 확인할 수 없습니다.')
                     self.view_events.put((kind, source, build_scrim_stats(records), None))
                     return
                 if kind == 'history' and source == '웹앱 내전 기록':
-                    with urllib.request.urlopen(collector.SERVER_URL, context=ssl.create_default_context(), timeout=8) as response:
+                    with urllib.request.urlopen(collector.SERVER_URL, context=web_ssl_context(), timeout=8) as response:
                         data = json.load(response)
                     records = data.get('matchHistory', [])
                     if not isinstance(records, list):
