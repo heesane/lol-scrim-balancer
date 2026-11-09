@@ -821,7 +821,7 @@ def round_rect(canvas, x1, y1, x2, y2, r, **kw):
 class RoundedCard(tk.Canvas):
     """둥근 테두리 카드. 내용은 self.body(tk.Frame)에 넣는다."""
 
-    def __init__(self, parent, title=None, subtitle=None, border=ACCENT_SOFT, pad=18, outer=BG):
+    def __init__(self, parent, title=None, subtitle=None, border=ACCENT_SOFT, pad=16, outer=BG):
         super().__init__(parent, bg=outer, highlightthickness=0, bd=0)
         self.border = border
         self.pad = px(pad)
@@ -829,7 +829,7 @@ class RoundedCard(tk.Canvas):
         if title:
             tk.Label(self.body, text=title, bg=CARD, fg=FG, font=font(13, 'bold')).pack(pady=(0, 2))
         if subtitle:
-            tk.Label(self.body, text=subtitle, bg=CARD, fg=SUB, font=font(9)).pack(pady=(0, px(8)))
+            tk.Label(self.body, text=subtitle, bg=CARD, fg=SUB, font=font(9)).pack(pady=(0, px(6)))
         self.window = self.create_window(0, 0, window=self.body, anchor='nw')
         self.bind('<Configure>', self.redraw)
 
@@ -859,13 +859,26 @@ class RoundButton(tk.Canvas):
             measure += image.width() + px(6)
         self.w = px(width) if width else measure + px(34)
         self.h = px(height)
-        super().__init__(parent, width=self.w, height=self.h, bg=bg, highlightthickness=0, bd=0, cursor='hand2')
-        self._state, self._hover = state, False
+        super().__init__(parent, width=self.w, height=self.h, bg=bg, highlightthickness=0, bd=0, cursor='hand2', takefocus=1)
+        self._state, self._hover, self._focus = state, False, False
+        self.bind('<FocusIn>', lambda e: self._set_focus(True))
+        self.bind('<FocusOut>', lambda e: self._set_focus(False))
+        for key in ('<KeyPress-space>', '<KeyPress-Return>', '<KeyPress-KP_Enter>'):
+            self.bind(key, self._key)
         self.bind('<Enter>', lambda e: self._set_hover(True))
         self.bind('<Leave>', lambda e: self._set_hover(False))
         self.bind('<ButtonRelease-1>', self._click)
         self.bind('<Configure>', lambda e: self.draw())
         self.draw()
+
+    def _set_focus(self, value):
+        self._focus = value
+        self.draw()
+
+    def _key(self, event):
+        if self._state != 'disabled' and self.command:
+            self.command()
+        return 'break'
 
     def _set_hover(self, value):
         self._hover = value
@@ -885,7 +898,11 @@ class RoundButton(tk.Canvas):
             fill, fg, outline = (MUTED, DISABLED, LINE) if self.kind != 'primary' else (DISABLED, CARD, '')
         elif self._hover:
             fill = hover
-        round_rect(self, 1, 1, w - 2, h - 2, h / 2 - 1, fill=fill, outline=outline or fill, width=1)
+        if self._focus and self._state != 'disabled':
+            # 키보드 포커스 표시: 포인트 색 2px 테두리
+            round_rect(self, 1, 1, w - 2, h - 2, h / 2 - 1, fill=fill, outline=ACCENT if self.kind != 'primary' else '#9A6B12', width=max(2, px(2)))
+        else:
+            round_rect(self, 1, 1, w - 2, h - 2, h / 2 - 1, fill=fill, outline=outline or fill, width=1)
         if self.image is None:
             self.create_text(w / 2, h / 2, text=self.text, fill=fg, font=font(self.size, 'bold'))
         else:
@@ -893,7 +910,7 @@ class RoundButton(tk.Canvas):
             left = (w - (self.image.width() + px(6) + text_w)) / 2
             self.create_image(left, h / 2, image=self.image, anchor='w')
             self.create_text(left + self.image.width() + px(6), h / 2, text=self.text, fill=fg, font=font(self.size, 'bold'), anchor='w')
-        super().configure(cursor='arrow' if self._state == 'disabled' else 'hand2')
+        super().configure(cursor='arrow' if self._state == 'disabled' else 'hand2', takefocus=0 if self._state == 'disabled' else 1)
 
     def configure(self, cnf=None, **kw):
         state = kw.pop('state', None)
@@ -988,6 +1005,9 @@ class CollectorUI:
         style.configure('TEntry', fieldbackground=MUTED, foreground=FG, bordercolor=LINE, lightcolor=MUTED,
                         darkcolor=MUTED, insertcolor=FG, padding=px(5))
         style.map('TEntry', bordercolor=[('focus', ACCENT)], lightcolor=[('focus', MUTED)])
+        style.configure('TEntry', selectbackground=ACCENT_SOFT, selectforeground=FG)
+        style.configure('Placeholder.TEntry', fieldbackground=MUTED, foreground=SUB, bordercolor=LINE, lightcolor=MUTED,
+                        darkcolor=MUTED, padding=px(5))
         style.map('TCombobox', fieldbackground=[('readonly', MUTED)], selectbackground=[('readonly', MUTED)],
                   selectforeground=[('readonly', FG)])
 
@@ -997,8 +1017,8 @@ class CollectorUI:
         # 상단 바: 제목과 웹앱 바로가기
         top = tk.Frame(frame, bg=BG)
         top.pack(fill='x', pady=(0, px(12)))
-        RoundButton(top, '내전 결과 수집기 · v2.0', kind='pill', height=30, size=9, bg=BG,
-                    command=lambda: None).pack(side='left')
+        tk.Label(top, text='내전 결과 수집기', bg=BG, fg=FG, font=font(14, 'bold')).pack(side='left')
+        tk.Label(top, text='v2.0', bg=BG, fg=SUB, font=font(9)).pack(side='left', padx=(px(6), 0), pady=(px(4), 0))
         RoundButton(top, '웹앱 열기', kind='pill', height=30, size=9, bg=BG,
                     command=lambda: __import__('webbrowser').open(SERVER_URL.rsplit('/api/', 1)[0])).pack(side='right')
 
@@ -1006,7 +1026,7 @@ class CollectorUI:
         grid.pack(fill='both', expand=True)
         grid.columnconfigure(0, weight=1, uniform='col')
         grid.columnconfigure(1, weight=1, uniform='col')
-        grid.rowconfigure(0, minsize=px(232))
+        grid.rowconfigure(0, minsize=px(196))
         grid.rowconfigure(1, weight=1)
 
         # 카드 1: 롤 클라이언트에 로그인한 계정
@@ -1026,6 +1046,7 @@ class CollectorUI:
         conn = tk.Frame(info, bg=CARD)
         conn.grid(row=3, column=1, sticky='w', pady=(px(8), 0))
         self.conn_dot = StatusDot(conn, 9)
+        self.conn_dot_color = DISABLED
         self.conn_dot.pack(side='left', padx=(0, px(6)))
         tk.Label(conn, textvariable=self.account_conn, bg=CARD, fg=SUB, font=font(9)).pack(side='left')
         self.draw_avatar(None, '?')
@@ -1085,6 +1106,11 @@ class CollectorUI:
         RoundButton(lobby_head, '새로고침', lambda: self.refresh_view('lobby'), height=30, size=9).pack(side='right')
         teams_panel = tk.Frame(self.lobby_tab, bg=CARD)
         teams_panel.pack(fill='both', expand=True)
+        self.teams_panel = teams_panel
+        self.lobby_empty = tk.Frame(self.lobby_tab, bg=CARD)
+        tk.Label(self.lobby_empty, text='아직 표시할 참가자가 없습니다', bg=CARD, fg=FG, font=font(12, 'bold')).pack(pady=(0, px(6)))
+        self.lobby_empty_hint = tk.Label(self.lobby_empty, text='', bg=CARD, fg=SUB, font=font(10), justify='center')
+        self.lobby_empty_hint.pack()
         teams_panel.columnconfigure(0, weight=1, uniform='team')
         teams_panel.columnconfigure(1, weight=1, uniform='team')
         teams_panel.rowconfigure(0, weight=1)
@@ -1096,7 +1122,9 @@ class CollectorUI:
             panel.grid(row=0, column=column, sticky='nsew', padx=(0, px(8)) if column == 0 else (px(8), 0))
             head = tk.Frame(panel, bg=CARD)
             head.pack(fill='x', pady=(0, px(6)))
-            tk.Frame(head, bg=color, width=px(4), height=px(18)).pack(side='left', padx=(0, px(8)))
+            dot = StatusDot(head, 10)
+            dot.set(color)
+            dot.pack(side='left', padx=(0, px(8)))
             tk.Label(head, textvariable=title, bg=CARD, fg=color, font=font(12, 'bold')).pack(side='left')
             trees.append(self.make_table(panel, [('name', '플레이어'), ('leader', '방장')], scroll_x=False))
         self.blue_tree, self.red_tree = trees
@@ -1105,8 +1133,9 @@ class CollectorUI:
             team_tree.column('leader', width=px(60), minwidth=px(50), stretch=False, anchor='center')
             team_tree.heading('leader', anchor='center')
         self.other_members = tk.StringVar(value='')
-        tk.Label(self.lobby_tab, textvariable=self.other_members, bg=CARD, fg=SUB, font=font(9),
-                 wraplength=px(840), justify='left').pack(anchor='w', pady=(px(8), 0))
+        self.other_members_label = tk.Label(self.lobby_tab, textvariable=self.other_members, bg=CARD, fg=SUB, font=font(9),
+                                            wraplength=px(840), justify='left')
+        self.other_members_label.pack(anchor='w', pady=(px(8), 0))
 
         # 실행 로그 탭
         log_head = tk.Frame(log_tab, bg=CARD)
@@ -1116,7 +1145,7 @@ class CollectorUI:
         RoundButton(log_head, '로그 저장', self.save_log, height=30, size=9).pack(side='right', padx=(0, px(6)))
         log_box = tk.Frame(log_tab, bg=STRIPE, highlightthickness=1, highlightbackground=LINE)
         log_box.pack(fill='both', expand=True)
-        self.log = tk.Text(log_box, wrap='word', font=font(10), bg=STRIPE, fg=FG, relief='flat', bd=0,
+        self.log = tk.Text(log_box, wrap='word', font=font(10), bg=STRIPE, fg=FG, selectbackground=ACCENT_SOFT, selectforeground=FG, inactiveselectbackground=ACCENT_TINT, relief='flat', bd=0,
                            padx=px(14), pady=px(12), state='disabled', highlightthickness=0, spacing1=px(2), spacing3=px(2))
         log_scroll = ttk.Scrollbar(log_box, orient='vertical', command=self.log.yview)
         self.log.configure(yscrollcommand=log_scroll.set)
@@ -1156,8 +1185,23 @@ class CollectorUI:
         head = tk.Frame(tab, bg=CARD)
         head.pack(fill='x', pady=(0, px(8)))
         self.counter_query = tk.StringVar()
-        entry = ttk.Entry(head, textvariable=self.counter_query, width=22, font=font(10))
+        entry = self.counter_entry = ttk.Entry(head, textvariable=self.counter_query, width=26, font=font(10))
         entry.pack(side='left', ipady=px(3))
+        placeholder = self.counter_placeholder_text = '챔피언 이름 (예: 가렌, 하이머)'
+        def show_placeholder(event=None):
+            if not self.counter_query.get():
+                entry.configure(style='Placeholder.TEntry')
+                self.counter_query.set(placeholder)
+                self.counter_placeholder = True
+        def hide_placeholder(event=None):
+            if self.counter_placeholder:
+                self.counter_placeholder = False
+                self.counter_query.set('')
+                entry.configure(style='TEntry')
+        self.counter_placeholder = False
+        entry.bind('<FocusIn>', hide_placeholder)
+        entry.bind('<FocusOut>', show_placeholder)
+        show_placeholder()
         # 한글 입력기는 조합 중 엔터를 조합 확정에 써서 KeyPress가 오지 않을 수 있다.
         # 그래서 키를 뗄 때도 받고, 조합된 글자가 입력칸에 반영된 뒤 검색한다.
         self.enter_pressed = False
@@ -1181,7 +1225,7 @@ class CollectorUI:
         tk.Label(tab, textvariable=self.counter_status, bg=CARD, fg=SUB, font=font(10), anchor='w').pack(fill='x', pady=(px(4), px(8)))
         box = tk.Frame(tab, bg=CARD, highlightthickness=1, highlightbackground=LINE)
         box.pack(fill='both', expand=True)
-        self.counter_text = tk.Text(box, wrap='word', font=font(10), bg=CARD, fg=FG, relief='flat', bd=0, highlightthickness=0,
+        self.counter_text = tk.Text(box, wrap='word', font=font(10), bg=CARD, fg=FG, selectbackground=ACCENT_SOFT, selectforeground=FG, inactiveselectbackground=ACCENT_TINT, relief='flat', bd=0, highlightthickness=0,
                                     padx=px(18), pady=px(14), spacing1=px(1), spacing3=px(1), cursor='arrow')
         scroll = ttk.Scrollbar(box, orient='vertical', command=self.counter_text.yview)
         self.counter_text.configure(yscrollcommand=scroll.set)
@@ -1190,11 +1234,15 @@ class CollectorUI:
         text = self.counter_text
         text.tag_configure('title', font=font(17, 'bold'))
         text.tag_configure('sub', foreground=SUB)
-        text.tag_configure('bar', foreground=ACCENT, font=font(12, 'bold'), spacing1=px(16), spacing3=px(6))
-        text.tag_configure('section', font=font(12, 'bold'), spacing1=px(16), spacing3=px(6))
+        text.tag_configure('section', font=font(12, 'bold'), spacing1=px(22), spacing3=px(8))
         text.tag_configure('name', font=font(10, 'bold'))
         text.tag_configure('hit', foreground=RED, font=font(10, 'bold'))
-        text.tag_configure('reason', foreground=SUB, lmargin1=px(14), lmargin2=px(14), spacing1=px(2), spacing3=px(8))
+        text.tag_configure('reason', foreground='#3F4756', lmargin1=px(34), lmargin2=px(34), spacing1=px(3), spacing2=px(4), spacing3=px(12))
+        text.tag_configure('rest', spacing2=px(6), lmargin1=px(2), lmargin2=px(2))
+        def limit_measure(event):
+            # 설명 문단은 한 줄이 너무 길어지지 않게 오른쪽 여백으로 폭을 제한한다(약 75자).
+            text.tag_configure('reason', rmargin=max(px(14), event.width - px(860)))
+        text.bind('<Configure>', limit_measure, add='+')
         text.tag_configure('alert', background='#FEF2F2', foreground=RED, font=font(10, 'bold'),
                            lmargin1=px(10), lmargin2=px(10), rmargin=px(10), spacing1=px(8), spacing3=px(8))
         text.tag_configure('good', background='#F0FDF4', foreground=GREEN, font=font(10, 'bold'),
@@ -1210,7 +1258,7 @@ class CollectorUI:
             if tag == 'IMG':
                 text.image_create('end', image=chunk, align='center', padx=px(3))
             else:
-                text.insert('end', chunk, tag or ())
+                text.insert('end', chunk, tag if isinstance(tag, tuple) else (tag or ()))
         text.configure(state='disabled')
         text.yview_moveto(scroll)
 
@@ -1298,6 +1346,10 @@ class CollectorUI:
     def search_counter(self):
         if not self.counter_index:
             return
+        if self.counter_placeholder and self.counter_query.get() == self.counter_placeholder_text:
+            return
+        self.counter_placeholder = False
+        self.counter_entry.configure(style='TEntry')
         matches = self.counter_index.find(self.counter_query.get())
         if not matches:
             self.counter_status.set(f"'{self.counter_query.get().strip()}'에 맞는 챔피언이 없습니다")
@@ -1331,7 +1383,7 @@ class CollectorUI:
         def champions(title, items):
             if not items:
                 return
-            parts.extend([('▍', 'bar'), (title + '\n', 'section')])
+            parts.append((title + f'  {len(items)}\n', 'section'))
             detailed = [c for c in items if c['reason']]
             rest = [c for c in items if not c['reason']]
             for c in detailed:
@@ -1342,24 +1394,26 @@ class CollectorUI:
                 parts.append((c['reason'] + '\n', 'reason'))
             if rest:
                 parts.append(('그 밖에  ', 'sub'))
+                start = len(parts)
                 for index, c in enumerate(rest):
                     hit = norm_name(c['name']) in marked
                     icon(c['name'], 22)
                     parts.append((c['name'], 'hit' if hit else 'name'))
                     if index < len(rest) - 1:
-                        parts.append((', ', 'sub'))
+                        parts.append(('   ', None))
                 parts.append(('\n', None))
+                parts[start - 1:] = [(chunk, tag if tag in ('IMG',) else ((tag, 'rest') if tag else 'rest')) for chunk, tag in parts[start - 1:]]
 
         champions('하드 카운터', info['hard'])
         champions('일반 카운터', info['general'])
         champions('아이템·룬 등 대처 요소', info['extras'])
         if info['synergy']:
-            parts.extend([('▍', 'bar'), ('함께하면 좋은 조합\n', 'section')])
+            parts.append(('함께하면 좋은 조합\n', 'section'))
             for index, name in enumerate(info['synergy']):
                 icon(name, 22)
                 parts.append((name + ('   ' if index < len(info['synergy']) - 1 else '\n'), None))
         if info['combos']:
-            parts.extend([('▍', 'bar'), ('까다로운 바텀 조합\n', 'section'), (' · '.join(info['combos']) + '\n', None)])
+            parts.extend([('까다로운 바텀 조합\n', 'section'), ('   ·   '.join(info['combos']) + '\n', 'rest')])
         parts.append(('출처: vschamp.lol · 설명은 원문 그대로 보여 줍니다. 챔피언 이미지: Riot Data Dragon\n', 'foot'))
         self.write_counter_text(parts, scroll)
         self.request_icons()
@@ -1479,10 +1533,11 @@ class CollectorUI:
     def render_account(self, data, error):
         if error:
             self.account_name.set('연결 대기 중')
-            self.account_level.set('')
+            self.account_level.set('롤 클라이언트를 켜면 계정 정보를 불러옵니다')
             self.account_rank.set('')
             self.account_conn.set(error)
             self.conn_dot.set(DISABLED)
+            self.conn_dot_color = DISABLED
             self.avatar_image = None
             self.draw_avatar(None, '?')
             return
@@ -1491,6 +1546,8 @@ class CollectorUI:
         self.account_rank.set(data['rank'])
         self.account_conn.set('롤 클라이언트 연결됨')
         self.conn_dot.set(GREEN)
+        self.conn_dot_color = GREEN
+        self.update_lobby_empty()
         image = None
         if data.get('icon'):
             try:
@@ -1639,6 +1696,26 @@ class CollectorUI:
         self.lobby_status.set(f'{label} · {count}명')
 
     def render_view(self, kind, source, data, error):
+        try:
+            self._render_view(kind, source, data, error)
+        finally:
+            if kind in ('lobby', 'phase') and not self.closing:
+                self.update_lobby_empty()
+
+    def update_lobby_empty(self):
+        empty = not self.blue_tree.get_children() and not self.red_tree.get_children()
+        if empty:
+            connected = self.conn_dot_color == GREEN
+            self.lobby_empty_hint.configure(text='롤 클라이언트에서 사용자 설정 게임 방에 들어가면\n블루팀·레드팀 참가자가 여기에 자동으로 표시됩니다.' if connected
+                                            else '롤 클라이언트를 실행하고 로그인하면\n내전방 참가자를 자동으로 불러옵니다.')
+            if not self.lobby_empty.winfo_ismapped():
+                self.teams_panel.pack_forget()
+                self.lobby_empty.pack(expand=True)
+        elif not self.teams_panel.winfo_ismapped():
+            self.lobby_empty.pack_forget()
+            self.teams_panel.pack(fill='both', expand=True, before=self.other_members_label)
+
+    def _render_view(self, kind, source, data, error):
         self.view_busy.discard(kind)
         if kind == 'account':
             if not self.closing:
@@ -1740,7 +1817,8 @@ class CollectorUI:
             for index, record in enumerate(data):
                 if not isinstance(record, dict): continue
                 if source == '웹앱 내전 기록':
-                    values = (record.get('date',''), '웹앱 저장 기록', record.get('winner','알 수 없음'), record.get('duration','알 수 없음'), record.get('matchId',''))
+                    winner = {'BLUE': '블루팀 승리', 'RED': '레드팀 승리'}.get(str(record.get('winner', '')).upper(), '알 수 없음')
+                    values = (record.get('date',''), '내전', winner, record.get('duration','알 수 없음'), record.get('matchId',''))
                 else:
                     stamp = record.get('gameCreation')
                     date = datetime.datetime.fromtimestamp(stamp / 1000).strftime('%Y-%m-%d %H:%M') if isinstance(stamp,(int,float)) else record.get('gameCreationDate','')
@@ -1767,7 +1845,7 @@ class CollectorUI:
         window.configure(bg=BG)
         holder = tk.Frame(window, bg=CARD, highlightthickness=1, highlightbackground=LINE)
         holder.pack(fill='both', expand=True, padx=px(16), pady=px(16))
-        box = tk.Text(holder, wrap='word', font=font(10), bg=CARD, fg=FG, relief='flat', bd=0, highlightthickness=0,
+        box = tk.Text(holder, wrap='word', font=font(10), bg=CARD, fg=FG, selectbackground=ACCENT_SOFT, selectforeground=FG, inactiveselectbackground=ACCENT_TINT, relief='flat', bd=0, highlightthickness=0,
                       padx=px(18), pady=px(16), spacing1=px(2), spacing3=px(2))
         scroll = ttk.Scrollbar(holder, orient='vertical', command=box.yview)
         box.configure(yscrollcommand=scroll.set)
