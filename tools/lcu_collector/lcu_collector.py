@@ -668,6 +668,55 @@ def load_counter_data(force=False):
             return json.load(f), f'최신 데이터를 받지 못해 {int(age // 86400)}일 전 데이터를 사용'
 
 
+DDRAGON = 'https://ddragon.leagueoflegends.com'
+ICON_DIR = os.path.join(DATA_DIR, 'champion_icons')
+_ddragon_version = None
+
+
+def ddragon_version():
+    global _ddragon_version
+    if _ddragon_version is None:
+        _ddragon_version = json.loads(http_get(DDRAGON + '/api/versions.json'))[0]
+    return _ddragon_version
+
+
+def load_champion_keys():
+    """한글 챔피언 이름 -> Data Dragon 키(예: '오공' -> 'MonkeyKing'). 버전별로 디스크에 캐시한다."""
+    version = ddragon_version()
+    path = os.path.join(ICON_DIR, version, 'champions_ko.json')
+    try:
+        with open(path, encoding='utf-8') as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        pass
+    data = json.loads(http_get(f'{DDRAGON}/cdn/{version}/data/ko_KR/champion.json'))['data']
+    keys = {norm_name(info['name']): key for key, info in data.items()}
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + '.tmp', 'w', encoding='utf-8') as f:
+        json.dump(keys, f, ensure_ascii=False)
+    os.replace(path + '.tmp', path)
+    return keys
+
+
+def champion_icon(key):
+    """챔피언 정사각형 아이콘 PNG 바이트. 버전별로 디스크에 캐시한다."""
+    if not re.fullmatch(r'[A-Za-z0-9]+', key):
+        raise ValueError('잘못된 챔피언 키입니다.')
+    version = ddragon_version()
+    path = os.path.join(ICON_DIR, version, key + '.png')
+    try:
+        with open(path, 'rb') as f:
+            return f.read()
+    except OSError:
+        pass
+    data = http_get(f'{DDRAGON}/cdn/{version}/img/champion/{key}.png')
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + '.tmp', 'wb') as f:
+        f.write(data)
+    os.replace(path + '.tmp', path)
+    return data
+
+
 class CounterIndex:
     def __init__(self, entries):
         self.entries = [e for e in entries if isinstance(e, dict) and e.get('champion')]
@@ -803,9 +852,11 @@ class RoundButton(tk.Canvas):
         'danger': (CARD, '#FEF2F2', RED, '#F3B4B4'),
     }
 
-    def __init__(self, parent, text, command=None, kind='secondary', width=None, height=36, size=10, bg=CARD, state='normal'):
-        self.text, self.command, self.kind, self.size = text, command, kind, size
+    def __init__(self, parent, text, command=None, kind='secondary', width=None, height=36, size=10, bg=CARD, state='normal', image=None):
+        self.text, self.command, self.kind, self.size, self.image = text, command, kind, size, image
         measure = tkfont.Font(font=font(size, 'bold')).measure(text)
+        if image is not None:
+            measure += image.width() + px(6)
         self.w = px(width) if width else measure + px(34)
         self.h = px(height)
         super().__init__(parent, width=self.w, height=self.h, bg=bg, highlightthickness=0, bd=0, cursor='hand2')
@@ -835,7 +886,13 @@ class RoundButton(tk.Canvas):
         elif self._hover:
             fill = hover
         round_rect(self, 1, 1, w - 2, h - 2, h / 2 - 1, fill=fill, outline=outline or fill, width=1)
-        self.create_text(w / 2, h / 2, text=self.text, fill=fg, font=font(self.size, 'bold'))
+        if self.image is None:
+            self.create_text(w / 2, h / 2, text=self.text, fill=fg, font=font(self.size, 'bold'))
+        else:
+            text_w = tkfont.Font(font=font(self.size, 'bold')).measure(self.text)
+            left = (w - (self.image.width() + px(6) + text_w)) / 2
+            self.create_image(left, h / 2, image=self.image, anchor='w')
+            self.create_text(left + self.image.width() + px(6), h / 2, text=self.text, fill=fg, font=font(self.size, 'bold'), anchor='w')
         super().configure(cursor='arrow' if self._state == 'disabled' else 'hand2')
 
     def configure(self, cnf=None, **kw):
@@ -898,6 +955,12 @@ class CollectorUI:
         self.counter_auto_key = None
         self.champ_select = None
         self.champ_names = {}
+        self.champ_keys = {}
+        self.icon_data = {}
+        self.champ_images = {}
+        self.icons_wanted = set()
+        self.icons_failed = set()
+        self.counter_view = None
         SCALE = max(1.0, root.winfo_fpixels('1i') / 96)
         root.title('내전 결과 수집기')
         root.geometry(f'{px(980)}x{px(760)}')
@@ -1139,14 +1202,76 @@ class CollectorUI:
         text.tag_configure('foot', foreground=SUB, font=font(9), spacing1=px(14))
         self.write_counter_text([('챔피언 이름을 검색하거나, 챔피언 선택에 들어가면 내 챔피언의 상성을 자동으로 보여 줍니다.\n', 'sub')])
 
-    def write_counter_text(self, parts):
+    def write_counter_text(self, parts, scroll=0.0):
         text = self.counter_text
         text.configure(state='normal')
         text.delete('1.0', 'end')
         for chunk, tag in parts:
-            text.insert('end', chunk, tag or ())
+            if tag == 'IMG':
+                text.image_create('end', image=chunk, align='center', padx=px(3))
+            else:
+                text.insert('end', chunk, tag or ())
         text.configure(state='disabled')
-        text.yview_moveto(0)
+        text.yview_moveto(scroll)
+
+    def champ_image(self, name, size):
+        """캐시된 챔피언 아이콘을 size(논리 px)로 줄여 돌려준다. 없으면 받아 오도록 표시하고 None."""
+        key = self.champ_keys.get(norm_name(name))
+        if key is None:
+            if self.counter_index and self.counter_index.get(name) and name not in self.icons_failed:
+                self.icons_wanted.add(name)
+            return None
+        image = self.champ_images.get((key, size))
+        if image is not None:
+            return image
+        data = self.icon_data.get(key)
+        if data is None:
+            if key not in self.icons_failed:
+                self.icons_wanted.add(name)
+            return None
+        try:
+            base = tk.PhotoImage(data=data)
+        except tk.TclError:
+            self.icons_failed.add(key)
+            return None
+        factor = max(1, round(base.width() / px(size)))
+        image = base.subsample(factor) if factor > 1 else base
+        self.champ_images[(key, size)] = image
+        return image
+
+    def request_icons(self):
+        if not self.icons_wanted or 'icons' in self.view_busy:
+            return
+        names, self.icons_wanted = set(self.icons_wanted), set()
+        self.view_busy.add('icons')
+        known = dict(self.champ_keys)
+        def fetch():
+            try:
+                keys = known or load_champion_keys()
+                icons, failed = {}, set()
+                for name in names:
+                    key = keys.get(norm_name(name))
+                    if not key:
+                        failed.add(name)
+                        continue
+                    try:
+                        icons[key] = base64.b64encode(champion_icon(key)).decode()
+                    except Exception:
+                        failed.add(key)
+                self.view_events.put(('icons', None, (keys, icons, failed), None))
+            except Exception as exc:
+                self.view_events.put(('icons', None, ({}, {}, set(names)), str(exc)))
+        threading.Thread(target=fetch, daemon=True).start()
+
+    def render_icons(self, data):
+        keys, icons, failed = data
+        self.champ_keys = self.champ_keys or keys
+        self.icon_data.update(icons)
+        self.icons_failed.update(failed)
+        if self.counter_view:
+            self.show_counter(*self.counter_view, scroll=self.counter_text.yview()[0])
+        if self.champ_select:
+            self.render_champ_select(self.champ_select, rebuild_only=True)
 
     def load_counters(self, force=False):
         if 'counters' in self.view_busy:
@@ -1181,14 +1306,22 @@ class CollectorUI:
         if len(matches) > 1:
             self.counter_status.set('다른 결과: ' + ', '.join(m['champion'] for m in matches[1:8]))
 
-    def show_counter(self, champion, highlight=(), highlight_label=''):
+    def show_counter(self, champion, highlight=(), highlight_label='', scroll=0.0):
         entry = self.counter_index.get(champion) if self.counter_index else None
         if entry is None:
+            self.counter_view = None
             self.write_counter_text([(f'{champion}의 상성 정보가 없습니다.\n', 'sub')])
             return
+        self.counter_view = (champion, tuple(highlight), highlight_label)
         info = self.counter_index.describe(entry)
         marked = {norm_name(name) for name in highlight}
-        parts = [(info['champion'], 'title'), ('   ' + ' · '.join(info['lines']) + '\n', 'sub')]
+        parts = []
+        def icon(name, size):
+            image = self.champ_image(name, size)
+            if image is not None:
+                parts.append((image, 'IMG'))
+        icon(info['champion'], 52)
+        parts.extend([(info['champion'], 'title'), ('   ' + ' · '.join(info['lines']) + '\n', 'sub')])
         hits = [c['name'] for c in info['hard'] + info['general'] if norm_name(c['name']) in marked]
         if hits:
             parts.append((f"{highlight_label}에 {info['champion']}의 카운터가 있습니다: {', '.join(dict.fromkeys(hits))}\n", 'alert'))
@@ -1203,6 +1336,7 @@ class CollectorUI:
             rest = [c for c in items if not c['reason']]
             for c in detailed:
                 hit = norm_name(c['name']) in marked
+                icon(c['name'], 28)
                 parts.append((c['name'], 'hit' if hit else 'name'))
                 parts.append((('  ' + ', '.join(c['lines']) if c['lines'] else '') + ('  · ' + highlight_label if hit else '') + '\n', 'sub'))
                 parts.append((c['reason'] + '\n', 'reason'))
@@ -1210,6 +1344,7 @@ class CollectorUI:
                 parts.append(('그 밖에  ', 'sub'))
                 for index, c in enumerate(rest):
                     hit = norm_name(c['name']) in marked
+                    icon(c['name'], 22)
                     parts.append((c['name'], 'hit' if hit else 'name'))
                     if index < len(rest) - 1:
                         parts.append((', ', 'sub'))
@@ -1219,11 +1354,15 @@ class CollectorUI:
         champions('일반 카운터', info['general'])
         champions('아이템·룬 등 대처 요소', info['extras'])
         if info['synergy']:
-            parts.extend([('▍', 'bar'), ('함께하면 좋은 조합\n', 'section'), (' · '.join(info['synergy']) + '\n', None)])
+            parts.extend([('▍', 'bar'), ('함께하면 좋은 조합\n', 'section')])
+            for index, name in enumerate(info['synergy']):
+                icon(name, 22)
+                parts.append((name + ('   ' if index < len(info['synergy']) - 1 else '\n'), None))
         if info['combos']:
             parts.extend([('▍', 'bar'), ('까다로운 바텀 조합\n', 'section'), (' · '.join(info['combos']) + '\n', None)])
-        parts.append(('출처: vschamp.lol · 설명은 원문 그대로 보여 줍니다.\n', 'foot'))
-        self.write_counter_text(parts)
+        parts.append(('출처: vschamp.lol · 설명은 원문 그대로 보여 줍니다. 챔피언 이미지: Riot Data Dragon\n', 'foot'))
+        self.write_counter_text(parts, scroll)
+        self.request_icons()
 
     def fetch_champ_select(self):
         port, password = collector.get_lcu_credentials()
@@ -1243,30 +1382,37 @@ class CollectorUI:
                 'allies': [n for n in (pick(p) for p in session.get('myTeam') or [] if p is not mine) if n],
                 'enemies': [n for n in (pick(p) for p in session.get('theirTeam') or []) if n]}
 
-    def render_champ_select(self, data):
+    def render_champ_select(self, data, rebuild_only=False):
         self.champ_select = data
         key = (data['me'], tuple(data['allies']), tuple(data['enemies']))
-        if key == self.counter_auto_key:
+        if key == self.counter_auto_key and not rebuild_only:
             return
         self.counter_auto_key = key
         for child in self.counter_picks.winfo_children():
             child.destroy()
-        row = tk.Frame(self.counter_picks, bg=CARD)
-        row.pack(fill='x', pady=(px(2), px(2)))
-        tk.Label(row, text='챔피언 선택', bg=CARD, fg=SUB, font=font(9, 'bold')).pack(side='left', padx=(0, px(8)))
         allies = ([data['me']] if data['me'] else []) + data['allies']
         def view(name, ours):
             return lambda: self.show_counter(name, data['enemies'] if ours else allies, '상대 팀' if ours else '우리 팀')
+        def team_row(label, color):
+            row = tk.Frame(self.counter_picks, bg=CARD)
+            row.pack(fill='x', pady=(px(2), px(2)))
+            tk.Label(row, text=label, bg=CARD, fg=color, font=font(9, 'bold'), width=6, anchor='w').pack(side='left')
+            return row
+        def button(row, label, name, ours, kind):
+            RoundButton(row, label, view(name, ours), kind=kind, height=32, size=9,
+                        image=self.champ_image(name, 22)).pack(side='left', padx=(0, px(4)))
+        ours_row = team_row('우리 팀', BLUE)
         if data['me']:
-            RoundButton(row, '내 픽 ' + data['me'], view(data['me'], True), kind='pill', height=28, size=9).pack(side='left', padx=(0, px(4)))
+            button(ours_row, '내 픽 ' + data['me'], data['me'], True, 'pill')
         for name in data['allies']:
-            RoundButton(row, name, view(name, True), height=28, size=9).pack(side='left', padx=(0, px(4)))
+            button(ours_row, name, name, True, 'secondary')
         if data['enemies']:
-            tk.Label(row, text='vs', bg=CARD, fg=SUB, font=font(9, 'bold')).pack(side='left', padx=px(6))
-        for name in data['enemies']:
-            RoundButton(row, name, view(name, False), kind='danger', height=28, size=9).pack(side='left', padx=(0, px(4)))
-        if data['me'] and self.counter_index:
+            theirs_row = team_row('상대 팀', RED)
+            for name in data['enemies']:
+                button(theirs_row, name, name, False, 'danger')
+        if data['me'] and self.counter_index and not rebuild_only:
             view(data['me'], True)()
+        self.request_icons()
 
     def show_tab(self, page, refresh=True):
         page.tkraise()
@@ -1501,6 +1647,10 @@ class CollectorUI:
         if kind == 'counters':
             if not self.closing:
                 self.render_counters(data, error)
+            return
+        if kind == 'icons':
+            if not self.closing:
+                self.render_icons(data)
             return
         if kind == 'champselect':
             if not self.closing and not error and self.game_phase == 'ChampSelect':

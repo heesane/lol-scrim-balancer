@@ -6,3 +6,5 @@ lcu_server_backups/
 build/
 dist/
 *.spec
+vschamp_champ.json*
+champion_icons/
