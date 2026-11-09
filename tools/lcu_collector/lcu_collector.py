@@ -1517,7 +1517,7 @@ class CollectorUI:
         self.log.configure(yscrollcommand=log_scroll.set)
         log_scroll.pack(side='right', fill='y')
         self.log.pack(side='left', fill='both', expand=True)
-        for tag, color in [('ok', GREEN), ('warn', AMBER), ('error', RED), ('info', SUB)]:
+        for tag, color in [('ok', GREEN), ('warn', AMBER), ('error', RED), ('info', SUB), ('time', '#8B94A3')]:
             self.log.tag_configure(tag, foreground=color)
 
         # 매치 히스토리 탭
@@ -2769,22 +2769,30 @@ class CollectorUI:
         box.configure(state='disabled')
 
     def append(self, text):
+        # 위로 올려 이전 로그를 읽는 중이면 새 줄이 들어와도 맨 아래로 끌어내리지 않는다.
+        at_bottom = self.log.yview()[1] >= 0.999
         self.log.configure(state='normal')
+        stamp = datetime.datetime.now().strftime('%H:%M:%S')
         for line in text.splitlines(keepends=True):
             head = line.lstrip()
             tag = ('error' if head.startswith(('[오류]', '[화면 오류]')) or '실패' in line else
                    'warn' if head.startswith('[!]') else
                    'ok' if head.startswith(('[+]', '[ 성공]')) else
                    'info' if head.startswith(('[*]', '[-]')) else '')
+            # 저장한 로그만 보고도 언제 일어난 일인지 알 수 있게 줄마다 시각을 붙인다.
+            if line.strip():
+                self.log.insert('end', stamp + '  ', 'time')
             self.log.insert('end', line, tag)
         if int(self.log.index('end-1c').split('.')[0]) > 1500:
             self.log.delete('1.0', '300.0')
-        self.log.see('end')
+        if at_bottom:
+            self.log.see('end')
         self.log.configure(state='disabled')
 
     def save_log(self):
         from tkinter import filedialog
-        filename = filedialog.asksaveasfilename(parent=self.root, title='로그 저장', defaultextension='.txt', filetypes=[('텍스트 파일','*.txt')])
+        filename = filedialog.asksaveasfilename(parent=self.root, title='로그 저장', defaultextension='.txt', filetypes=[('텍스트 파일','*.txt')],
+                                                initialfile=datetime.datetime.now().strftime('ScrimCollector-log-%Y%m%d-%H%M.txt'))
         if filename:
             try:
                 Path(filename).write_text(self.log.get('1.0', 'end-1c'), encoding='utf-8')
