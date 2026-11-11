@@ -658,6 +658,8 @@ import queue
 import subprocess
 import sys
 import threading
+# PyInstaller는 __import__('webbrowser')처럼 문자열로 부르는 모듈을 찾지 못해 exe에 넣지 않는다.
+import webbrowser
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import ttk, messagebox
@@ -1417,7 +1419,7 @@ class CollectorUI:
         tk.Label(top, text='내전 결과 수집기', bg=BG, fg=FG, font=font(14, 'bold')).pack(side='left')
         tk.Label(top, text='v2.0', bg=BG, fg=SUB, font=font(9)).pack(side='left', padx=(px(6), 0), pady=(px(4), 0))
         RoundButton(top, '스크림 사이트 가기', kind='pill', height=30, size=9, bg=BG,
-                    command=lambda: __import__('webbrowser').open(SERVER_URL.rsplit('/api/', 1)[0])).pack(side='right')
+                    command=lambda: webbrowser.open(SERVER_URL.rsplit('/api/', 1)[0])).pack(side='right')
 
         grid = tk.Frame(frame, bg=BG)
         grid.pack(fill='both', expand=True)
@@ -1725,7 +1727,7 @@ class CollectorUI:
         RoundButton(head, '검색', self.search_counter, kind='primary', height=30, size=9).pack(side='left', padx=(px(6), 0))
         source = tk.Label(head, text='데이터 출처: vschamp.lol', bg=CARD, fg=SUB, font=font(9, 'underline'), cursor='hand2')
         source.pack(side='right')
-        source.bind('<Button-1>', lambda e: __import__('webbrowser').open(COUNTER_SITE))
+        source.bind('<Button-1>', lambda e: webbrowser.open(COUNTER_SITE))
         self.counter_picks = tk.Frame(tab, bg=CARD)
         self.counter_picks.pack(fill='x')
         self.pick_rows = None
