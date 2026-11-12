@@ -660,12 +660,128 @@ import sys
 import threading
 # PyInstaller는 __import__('webbrowser')처럼 문자열로 부르는 모듈을 찾지 못해 exe에 넣지 않는다.
 import webbrowser
+import urllib.parse
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import ttk, messagebox
 
 BASE = Path(DATA_DIR)
 collector = sys.modules[__name__]
+
+
+# ---------- 딥롤 클래시 토너먼트 코드 ----------
+# clash.deeplol.gg의 '코드 생성하기' 버튼이 부르는 API를 그대로 부른다. 공식 API가 아니라 사이트 내부 API라
+# 사이트가 바뀌면 동작하지 않을 수 있다.
+DEEPLOL_API = 'https://b2c-api.deeplol.gg/'
+DEEPLOL_CRED_TARGET = 'ScrimCollector.DeeplolClash'
+DEEPLOL_MAPS = [('소환사의 협곡', 'SUMMONERS_RIFT'), ('칼바람 나락', 'HOWLING_ABYSS')]
+DEEPLOL_PICKS = [('토너먼트 드래프트', 'TOURNAMENT_DRAFT'), ('드래프트', 'DRAFT_MODE'), ('블라인드', 'BLIND_PICK'), ('무작위 선택', 'ALL_RANDOM')]
+DEEPLOL_SPECTATORS = [('모두 허용', 'ALL'), ('로비만', 'LOBBYONLY'), ('허용 안 함', 'NONE')]
+DEEPLOL_COUNTER_FILE = Path(DATA_DIR) / 'tournament_codes.json'
+DEEPLOL_NAME_MAX_BYTES = 24  # 사이트가 매치 이름을 24바이트 미만으로 받는다.
+
+
+def _credential_api():
+    import ctypes
+    from ctypes import wintypes
+
+    class CREDENTIAL(ctypes.Structure):
+        _fields_ = [('Flags', wintypes.DWORD), ('Type', wintypes.DWORD), ('TargetName', wintypes.LPWSTR),
+                    ('Comment', wintypes.LPWSTR), ('LastWritten', wintypes.FILETIME),
+                    ('CredentialBlobSize', wintypes.DWORD), ('CredentialBlob', ctypes.POINTER(ctypes.c_char)),
+                    ('Persist', wintypes.DWORD), ('AttributeCount', wintypes.DWORD), ('Attributes', ctypes.c_void_p),
+                    ('TargetAlias', wintypes.LPWSTR), ('UserName', wintypes.LPWSTR)]
+
+    advapi = ctypes.WinDLL('advapi32', use_last_error=True)
+    advapi.CredReadW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(ctypes.POINTER(CREDENTIAL))]
+    advapi.CredWriteW.argtypes = [ctypes.POINTER(CREDENTIAL), wintypes.DWORD]
+    advapi.CredDeleteW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD]
+    advapi.CredFree.argtypes = [ctypes.c_void_p]
+    return ctypes, CREDENTIAL, advapi
+
+
+def load_deeplol_code():
+    """저장해 둔 딥롤 클래시 접속 코드. 파일이 아니라 Windows 자격 증명 관리자에 둔다."""
+    if sys.platform != 'win32':
+        return None
+    ctypes, CREDENTIAL, advapi = _credential_api()
+    pointer = ctypes.POINTER(CREDENTIAL)()
+    if not advapi.CredReadW(DEEPLOL_CRED_TARGET, 1, 0, ctypes.byref(pointer)):
+        return None
+    try:
+        cred = pointer.contents
+        return ctypes.string_at(cred.CredentialBlob, cred.CredentialBlobSize).decode('utf-16-le') or None
+    finally:
+        advapi.CredFree(pointer)
+
+
+def save_deeplol_code(value):
+    if sys.platform != 'win32':
+        raise OSError('접속 코드 저장은 Windows에서만 지원합니다')
+    ctypes, CREDENTIAL, advapi = _credential_api()
+    if not value:
+        advapi.CredDeleteW(DEEPLOL_CRED_TARGET, 1, 0)
+        return
+    blob = value.encode('utf-16-le')
+    buffer = ctypes.create_string_buffer(blob, len(blob))
+    cred = CREDENTIAL(Type=1, TargetName=DEEPLOL_CRED_TARGET, CredentialBlobSize=len(blob), Persist=2, UserName='clash.deeplol.gg',
+                      CredentialBlob=ctypes.cast(buffer, ctypes.POINTER(ctypes.c_char)))
+    if not advapi.CredWriteW(ctypes.byref(cred), 0):
+        raise OSError(ctypes.get_last_error(), '자격 증명 관리자에 저장하지 못했습니다')
+
+
+def deeplol_call(method, path, params=None, body=None):
+    url = DEEPLOL_API + path + ('?' + urllib.parse.urlencode(params) if params else '')
+    data = json.dumps(body).encode() if body is not None else None
+    request = urllib.request.Request(url, data=data, method=method, headers={
+        'Content-Type': 'application/json', 'Accept': 'application/json',
+        'Origin': 'https://clash.deeplol.gg', 'Referer': 'https://clash.deeplol.gg/'})
+    try:
+        with urllib.request.urlopen(request, timeout=15, context=web_ssl_context()) as response:
+            return json.loads(response.read().decode('utf-8'))
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f'딥롤 서버가 요청을 거절했습니다 (HTTP {exc.code})') from None
+    except (urllib.error.URLError, OSError) as exc:
+        raise RuntimeError(f'딥롤 서버에 연결하지 못했습니다: {getattr(exc, "reason", exc)}') from None
+
+
+def make_deeplol_code(password, name, map_name, pick_type, spectator_type):
+    """접속 코드로 로그인한 뒤 토너먼트 코드를 하나 만든다. (코드, 서버 이름)을 돌려준다."""
+    # 사이트도 접속 코드를 본문과 쿼리에 함께 보낸다. 같은 방식으로 보낸다.
+    server = deeplol_call('POST', 'tournament/tournament_login', params={'password': password}, body={'password': password})
+    if not isinstance(server, dict) or not server.get('server_id'):
+        raise RuntimeError('로그인에 실패했습니다. 접속 코드를 확인하세요')
+    if server.get('in_active') == 1:
+        raise RuntimeError('딥롤 서버가 비활성 상태라 코드를 만들 수 없습니다. 사이트의 서버 설정을 확인하세요')
+    result = deeplol_call('GET', 'tournament/tournament_code', params={
+        'server_id': str(server['server_id']), 'server_name': server.get('server_name', ''), 'server_comment': name,
+        'spectator_type': spectator_type, 'pick_type': pick_type, 'map_name': map_name, 'platform_id': 'KR'})
+    codes = (result or {}).get('tournament_code_list') if isinstance(result, dict) else None
+    if not codes:
+        raise RuntimeError('코드를 받지 못했습니다. 방금 만들었다면 몇 초 뒤에 다시 시도하세요')
+    return codes[0], server.get('server_name', '')
+
+
+def load_code_history(today):
+    """오늘 만든 코드 목록. 날짜가 바뀌면 빈 목록에서 다시 시작한다."""
+    try:
+        state = json.loads(DEEPLOL_COUNTER_FILE.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return []
+    return state.get('codes', []) if isinstance(state, dict) and state.get('date') == today else []
+
+
+def save_code_history(today, codes):
+    DEEPLOL_COUNTER_FILE.parent.mkdir(parents=True, exist_ok=True)
+    DEEPLOL_COUNTER_FILE.write_text(json.dumps({'date': today, 'codes': codes}, ensure_ascii=False), encoding='utf-8')
+
+
+def next_match_name(now, codes):
+    """'월.일-오늘 몇 번째' 형식의 다음 매치 이름 (예: 11.12-03). 직접 지은 이름은 번호에 넣지 않는다."""
+    prefix = now.strftime('%m.%d-')
+    numbers = [int(c['name'][len(prefix):]) for c in codes
+               if str(c.get('name', '')).startswith(prefix) and c['name'][len(prefix):].isdigit()]
+    return f'{prefix}{max(numbers, default=0) + 1:02d}'
 
 
 AUTOSTART_KEY = r'Software\Microsoft\Windows\CurrentVersion\Run'
@@ -1495,8 +1611,10 @@ class CollectorUI:
         log_tab = tk.Frame(pages, bg=CARD)
         self.history_tab = tk.Frame(pages, bg=CARD)
         self.counter_tab = tk.Frame(pages, bg=CARD)
+        self.code_tab = tk.Frame(pages, bg=CARD)
         self.tab_buttons = {}
-        for name, page in [('참가자 · 밴픽', self.lobby_tab), ('카운터 정보', self.counter_tab), ('실행 로그', log_tab), ('매치 히스토리', self.history_tab)]:
+        for name, page in [('참가자 · 밴픽', self.lobby_tab), ('카운터 정보', self.counter_tab), ('토너먼트 코드', self.code_tab),
+                           ('실행 로그', log_tab), ('매치 히스토리', self.history_tab)]:
             page.grid(row=0, column=0, sticky='nsew')
             holder = tk.Frame(tabs_bar, bg=CARD)
             holder.pack(side='left', padx=(0, px(18)))
@@ -1612,6 +1730,7 @@ class CollectorUI:
         self.clear_match_detail()
 
         self.build_counter_tab(self.counter_tab)
+        self.build_code_tab(self.code_tab)
         self.show_tab(self.lobby_tab, refresh=False)
         self.append('창을 열면 수집을 자동으로 시작합니다. 멈추려면 수집 중지를 누르세요.\n')
         root.report_callback_exception = self.ui_error
@@ -1788,6 +1907,177 @@ class CollectorUI:
         self.counter_selected = None
         self.write_counter_text([('챔피언 이름을 검색하거나, 챔피언 선택에 들어가면 내 챔피언의 상성을 자동으로 보여 줍니다.\n', 'sub')])
         self.write_detail(None)
+
+    # ---------- 토너먼트 코드 탭 ----------
+    def build_code_tab(self, tab):
+        head = tk.Frame(tab, bg=CARD)
+        head.pack(fill='x', pady=(0, px(10)))
+        tk.Label(head, text='딥롤 클래시 토너먼트 코드를 만들어 클립보드에 복사합니다. 롤 클라이언트에 붙여 넣으면 됩니다.',
+                 bg=CARD, fg=SUB, font=font(10)).pack(side='left')
+        site = tk.Label(head, text='clash.deeplol.gg', bg=CARD, fg=SUB, font=font(9, 'underline'), cursor='hand2')
+        site.pack(side='right')
+        site.bind('<Button-1>', lambda e: webbrowser.open('https://clash.deeplol.gg/'))
+
+        form = tk.Frame(tab, bg=CARD)
+        form.pack(fill='x')
+        self.code_name = tk.StringVar()
+        self.code_name_auto = ''
+        self.code_map = tk.StringVar(value=DEEPLOL_MAPS[0][0])
+        self.code_pick = tk.StringVar(value=DEEPLOL_PICKS[0][0])
+        self.code_spectator = tk.StringVar(value=DEEPLOL_SPECTATORS[0][0])
+        fields = [('매치 이름', ttk.Entry(form, textvariable=self.code_name, width=14, font=font(10))),
+                  ('맵', ttk.Combobox(form, textvariable=self.code_map, values=[t for t, _ in DEEPLOL_MAPS], state='readonly', width=13, font=font(10))),
+                  ('픽 방식', ttk.Combobox(form, textvariable=self.code_pick, values=[t for t, _ in DEEPLOL_PICKS], state='readonly', width=15, font=font(10))),
+                  ('관전', ttk.Combobox(form, textvariable=self.code_spectator, values=[t for t, _ in DEEPLOL_SPECTATORS], state='readonly', width=10, font=font(10)))]
+        for column, (label, widget) in enumerate(fields):
+            tk.Label(form, text=label, bg=CARD, fg=SUB, font=font(9)).grid(row=0, column=column, sticky='w', padx=(0, px(10)))
+            widget.grid(row=1, column=column, sticky='w', padx=(0, px(10)), ipady=px(2))
+        self.code_name_entry = fields[0][1]
+        self.code_name_entry.bind('<Return>', lambda e: self.generate_code())
+
+        actions = tk.Frame(tab, bg=CARD)
+        actions.pack(fill='x', pady=(px(12), 0))
+        self.code_button = RoundButton(actions, '코드 생성하기', self.generate_code, kind='primary', height=36, size=10, width=140)
+        self.code_button.pack(side='left')
+        self.code_login_button = RoundButton(actions, '접속 코드 설정', self.set_access_code, height=36, size=10)
+        self.code_login_button.pack(side='left', padx=(px(8), 0))
+        self.code_status = tk.StringVar()
+        tk.Label(actions, textvariable=self.code_status, bg=CARD, fg=SUB, font=font(10), anchor='w').pack(side='left', padx=(px(12), 0))
+
+        result = tk.Frame(tab, bg=MUTED, padx=px(16), pady=px(12))
+        result.pack(fill='x', pady=(px(12), px(10)))
+        self.code_result = tk.StringVar(value='아직 만든 코드가 없습니다')
+        self.code_result_label = tk.Label(result, textvariable=self.code_result, bg=MUTED, fg=SUB, font=font(14, 'bold'), anchor='w')
+        self.code_result_label.pack(side='left', fill='x', expand=True)
+        self.code_copy_button = RoundButton(result, '다시 복사', lambda: self.copy_code(self.last_code), height=32, size=9, bg=MUTED, state='disabled')
+        self.code_copy_button.pack(side='right')
+        self.last_code = None
+
+        tk.Label(tab, text='오늘 만든 코드 · 더블클릭하면 복사합니다', bg=CARD, fg=SUB, font=font(9)).pack(anchor='w', pady=(0, px(4)))
+        self.code_tree = self.make_table(tab, [('time', '시각'), ('name', '매치 이름'), ('code', '코드')], scroll_x=False)
+        self.code_tree.column('time', width=px(70), minwidth=px(60), stretch=False)
+        self.code_tree.column('name', width=px(120), minwidth=px(80), stretch=False)
+        self.code_tree.column('code', width=px(420), minwidth=px(120))
+        self.code_tree.bind('<Double-1>', lambda e: self.copy_selected_code())
+        self.code_tree.bind('<Return>', lambda e: self.copy_selected_code())
+        self.code_busy = False
+        self.code_cooldown_until = 0.0
+        self.refresh_code_name()
+        self.update_code_login_status()
+
+    def update_code_login_status(self):
+        saved = bool(load_deeplol_code())
+        self.code_login_button.set_content('접속 코드 변경' if saved else '접속 코드 설정', self.set_access_code, 'secondary')
+        if not saved and not self.code_status.get():
+            self.code_status.set('처음 한 번 접속 코드를 설정하세요. 코드 생성하기를 눌러도 물어봅니다.')
+
+    def set_access_code(self):
+        from tkinter import simpledialog
+        value = simpledialog.askstring('딥롤 클래시 접속 코드', 'clash.deeplol.gg 관리자 접속 코드를 입력하세요.\n'
+                                       'Windows 자격 증명 관리자에 저장하며, 비워 두고 확인하면 저장된 코드를 지웁니다.',
+                                       show='*', parent=self.root)
+        if value is None:
+            return False
+        try:
+            save_deeplol_code(value.strip())
+        except OSError as exc:
+            messagebox.showerror('접속 코드 저장 오류', str(exc), parent=self.root)
+            return False
+        self.code_status.set('접속 코드를 저장했습니다' if value.strip() else '저장된 접속 코드를 지웠습니다')
+        self.update_code_login_status()
+        return bool(value.strip())
+
+    def code_history(self):
+        return load_code_history(datetime.date.today().isoformat())
+
+    def refresh_code_name(self):
+        """오늘 몇 번째 경기인지로 다음 매치 이름을 채운다. 직접 고쳐 쓴 이름은 건드리지 않는다."""
+        codes = self.code_history()
+        current = self.code_name.get().strip()
+        if not current or current == self.code_name_auto:
+            self.code_name_auto = next_match_name(datetime.datetime.now(), codes)
+            self.code_name.set(self.code_name_auto)
+        tree = self.code_tree
+        tree.delete(*tree.get_children())
+        for item in reversed(codes):
+            tree.insert('', 'end', values=(item.get('time', ''), item.get('name', ''), item.get('code', '')))
+        self.stripe(tree)
+
+    def generate_code(self):
+        if self.code_busy or time.monotonic() < self.code_cooldown_until:
+            return
+        name = self.code_name.get().strip()
+        if not name:
+            self.code_status.set('[!] 매치 이름을 입력하세요')
+            return
+        if len(name.encode('utf-8')) >= DEEPLOL_NAME_MAX_BYTES:
+            self.code_status.set(f'[!] 매치 이름이 너무 깁니다 (한글 7자, 영문·숫자 23자까지)')
+            return
+        password = load_deeplol_code()
+        if not password:
+            if not self.set_access_code():
+                return
+            password = load_deeplol_code()
+        options = (dict(DEEPLOL_MAPS)[self.code_map.get()], dict(DEEPLOL_PICKS)[self.code_pick.get()],
+                   dict(DEEPLOL_SPECTATORS)[self.code_spectator.get()])
+        self.code_busy = True
+        self.code_button.configure(state='disabled')
+        self.code_status.set('코드를 만드는 중...')
+        def work():
+            try:
+                code, server = make_deeplol_code(password, name, *options)
+                self.view_events.put(('tourcode', None, (name, code, server), None))
+            except Exception as exc:
+                self.view_events.put(('tourcode', None, (name, None, None), str(exc)))
+        threading.Thread(target=work, daemon=True).start()
+
+    def render_code(self, name, code, server, error):
+        self.code_busy = False
+        if error:
+            self.code_button.configure(state='normal')
+            self.code_status.set(f'[실패] {error}')
+            self.append(f'[!] 토너먼트 코드를 만들지 못했습니다: {error}\n')
+            return
+        now = datetime.datetime.now()
+        codes = self.code_history()
+        codes.append({'time': now.strftime('%H:%M'), 'name': name, 'code': code})
+        try:
+            save_code_history(now.date().isoformat(), codes)
+        except OSError:
+            pass
+        self.last_code = code
+        self.code_result.set(code)
+        self.code_result_label.configure(fg=FG)
+        self.code_copy_button.configure(state='normal')
+        self.copy_code(code)
+        self.append(f'[+] 토너먼트 코드를 만들었습니다 · {server} · {name}\n')
+        self.refresh_code_name()
+        # 사이트도 코드를 만든 뒤 5초 동안 다시 만들지 못하게 막는다.
+        self.code_cooldown_until = time.monotonic() + 5
+        self.code_cooldown_tick(f'{name} 코드를 클립보드에 복사했습니다')
+
+    def code_cooldown_tick(self, message):
+        left = self.code_cooldown_until - time.monotonic()
+        if left > 0:
+            self.code_status.set(f'{message} · {int(left) + 1}초 뒤 다시 만들 수 있습니다')
+            self.root.after(250, lambda: self.code_cooldown_tick(message))
+        else:
+            self.code_status.set(message)
+            self.code_button.configure(state='normal')
+
+    def copy_code(self, code):
+        if not code:
+            return
+        self.root.clipboard_clear()
+        self.root.clipboard_append(code)
+        self.root.update_idletasks()
+
+    def copy_selected_code(self):
+        selected = self.code_tree.selection()
+        if selected:
+            code = self.code_tree.set(selected[0], 'code')
+            self.copy_code(code)
+            self.code_status.set(f"{self.code_tree.set(selected[0], 'name')} 코드를 클립보드에 복사했습니다")
 
     def write_counter_text(self, parts, scroll=0.0):
         text = self.counter_text
@@ -2178,6 +2468,8 @@ class CollectorUI:
             bar.configure(bg=ACCENT if active else CARD)
         if refresh and page is self.history_tab:
             self.refresh_view('history')
+        if page is self.code_tab:
+            self.refresh_code_name()
 
     def draw_avatar(self, image, initial):
         c = self.avatar
@@ -2694,6 +2986,10 @@ class CollectorUI:
         if kind == 'icons':
             if not self.closing:
                 self.render_icons(data)
+            return
+        if kind == 'tourcode':
+            if not self.closing:
+                self.render_code(*data, error)
             return
         if kind == 'matchdetail':
             record, game = data
